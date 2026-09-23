@@ -1,51 +1,55 @@
-# Backend integration draft
+# Backend — stage 1
 
-**Status:** interface discovered; API routes and payload schemas remain proposals.
+FastAPI adapter for the simulation engine. This stage exposes health, canonical
+engine data, and scenario simulation. It does not calculate costs, effects, or
+Score in the backend.
 
-## Confirmed simulation interface
+## Endpoints
 
-The current engine is on `feature/simulation` (commit `5458bb9`). Its package exports:
+- `GET /health` — API and engine availability.
+- `GET /districts` — delegates to `simulation.get_districts()`.
+- `GET /measures` — delegates to `simulation.get_measures()`.
+- `POST /simulate` — delegates validation and calculation to
+  `simulation.simulate_scenario()`.
 
-```python
-from simulation import (
-    get_districts,
-    get_measures,
-    validate_scenario,
-    simulate_scenario,
-)
+Example request:
+
+```json
+{
+  "decisions": [
+    {"measure_id": "M7", "district": "NURA"},
+    {"measure_id": "M8", "district": "NURA"},
+    {"measure_id": "M10", "district": "NURA"},
+    {"measure_id": "M12"},
+    {"measure_id": "M5", "district": "SARYARKA"}
+  ]
+}
 ```
 
-- `get_districts()` and `get_measures()` return the canonical synthetic data and measure catalog.
-- `validate_scenario(scenario)` returns `valid`, `errors`, and `total_cost`.
-- `simulate_scenario(scenario)` accepts a sequence of decision mappings, for example `{"measure_id": "M7", "district": "NURA"}`.
-- A valid result includes `score`, district and indicator details, measure contributions, cost, and budget remaining.
-- An invalid result contains `valid: false`, `errors`, and `total_cost`; it has no numeric Score.
+The engine returns its canonical result. Invalid scenarios contain validation
+errors and do not contain a numeric Score. Client-supplied costs and scores are
+rejected by the request schema.
 
-These are observed signatures and return fields from the simulation branch, not new backend calculations.
+## Run locally
 
-## Proposed API surface
+From the repository root, with Python 3.10 or newer:
 
-The following route names come from the handoff plan and still need agreement with the frontend member:
+```powershell
+py -m venv .venv
+.venv\Scripts\Activate.ps1
+pip install -r requirements.txt
+uvicorn backend.main:app --reload
+```
 
-- `GET /districts` — call `get_districts()`.
-- `GET /measures` — call `get_measures()`.
-- `POST /simulate` — validate and call `simulate_scenario()`; do not duplicate engine rules or math.
-- `POST /ai/analyze` — rerun the submitted decisions on the server, then ask AI to explain the resulting engine output. Do not accept a client-supplied Score as authoritative.
-- `POST /ai/optimize` — optional; defer until simulation and explanation work end to end.
+OpenAPI UI: `http://127.0.0.1:8000/docs`.
 
-Exact API request and response schemas are not yet confirmed.
+## Integration status
 
-## Validation and AI invariants
+The simulation package currently lives on `feature/simulation`, separately
+from `feature/agents-backend`. The API starts without it, reports a degraded
+health status, and returns HTTP 503 from engine-dependent routes until the
+branches are integrated. No simulation code or Score formula is copied here.
 
-- Budget: 100 virtual units; exactly five unique measures; at most two per direction.
-- District measures require one district; citywide measures must omit it.
-- Apply the engine's incompatibility rules.
-- Invalid selections receive validation reasons and no Score.
-- The engine owns validation, effects, and Score. AI explains a valid server-computed result; it does not invent numbers.
-- Clearly label live AI output, test mock output, and template fallback output.
-
-The specification is ambiguous about requiring representation from all five directions: the detailed rule gives a maximum of two per direction, while the introduction can be read as requiring each direction. Keep the engine's observed behavior unless the team clarifies otherwise.
-
-## Branch integration
-
-The simulation implementation is currently on `feature/simulation`; the backend draft is on `feature/agents-backend`. They do not yet share the simulation files. Coordinate branch integration before claiming the backend path runs end to end.
+The frontend API document is still marked as a proposal. Its payload format
+must be agreed with the team and adapted at the API boundary before wiring the
+frontend to these engine-native routes.
