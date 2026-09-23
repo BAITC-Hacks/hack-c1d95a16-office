@@ -1,38 +1,51 @@
 # Backend integration draft
 
-**Status:** proposal for the first backend/AI integration step. Route names and payload shapes below are not yet a confirmed runtime contract.
+**Status:** interface discovered; API routes and payload schemas remain proposals.
 
-## Responsibilities
+## Confirmed simulation interface
 
-- Treat the simulation engine as the source of truth for validation, effects, and Score. The backend must not reimplement the Score formula.
-- Build each scenario from the engine's immutable baseline data and authoritative measure catalog; do not trust prices or effects supplied by the client.
-- Return validation reasons without a numeric Score when a selection is invalid.
-- Let AI explain a server-recomputed, valid simulation result. AI must not invent or recalculate numbers.
-- Label live AI output, test mock output, and template fallback output distinctly.
+The current engine is on `feature/simulation` (commit `5458bb9`). Its package exports:
 
-## Draft API surface
+```python
+from simulation import (
+    get_districts,
+    get_measures,
+    validate_scenario,
+    simulate_scenario,
+)
+```
 
-These route names come from the handoff plan and need confirmation against the actual app and engine:
+- `get_districts()` and `get_measures()` return the canonical synthetic data and measure catalog.
+- `validate_scenario(scenario)` returns `valid`, `errors`, and `total_cost`.
+- `simulate_scenario(scenario)` accepts a sequence of decision mappings, for example `{"measure_id": "M7", "district": "NURA"}`.
+- A valid result includes `score`, district and indicator details, measure contributions, cost, and budget remaining.
+- An invalid result contains `valid: false`, `errors`, and `total_cost`; it has no numeric Score.
 
-- `GET /districts` — expose the fixed synthetic district dataset.
-- `GET /measures` — expose the authoritative measure catalog.
-- `POST /simulate` — validate a selection and delegate calculation to the simulation engine.
-- `POST /ai/analyze` — recalculate the submitted selection server-side, then ask AI to explain that result.
-- `POST /ai/optimize` — optional; defer until the basic simulation and explanation path works.
+These are observed signatures and return fields from the simulation branch, not new backend calculations.
 
-Exact request and response schemas must be agreed with the simulation and frontend members before implementation.
+## Proposed API surface
 
-## Validation invariants from the detailed rules
+The following route names come from the handoff plan and still need agreement with the frontend member:
 
-- Budget: 100 virtual units.
-- Exactly five unique measures; total cost must not exceed the budget.
-- At most two measures per direction.
-- District measures require a district; citywide measures do not.
-- Apply the listed incompatibilities.
-- Invalid selections receive reasons and no Score.
+- `GET /districts` — call `get_districts()`.
+- `GET /measures` — call `get_measures()`.
+- `POST /simulate` — validate and call `simulate_scenario()`; do not duplicate engine rules or math.
+- `POST /ai/analyze` — rerun the submitted decisions on the server, then ask AI to explain the resulting engine output. Do not accept a client-supplied Score as authoritative.
+- `POST /ai/optimize` — optional; defer until simulation and explanation work end to end.
 
-The specification is ambiguous about direction coverage: its introduction can be read as requiring all five directions, while its detailed rules set a maximum of two per direction and give an example without transport. Confirm this before enforcing a five-direction minimum.
+Exact API request and response schemas are not yet confirmed.
 
-## Integration prerequisite
+## Validation and AI invariants
 
-The repository currently contains no simulation engine or application modules. Confirm the engine's actual input/output contract before locking backend schemas or implementing calculations.
+- Budget: 100 virtual units; exactly five unique measures; at most two per direction.
+- District measures require one district; citywide measures must omit it.
+- Apply the engine's incompatibility rules.
+- Invalid selections receive validation reasons and no Score.
+- The engine owns validation, effects, and Score. AI explains a valid server-computed result; it does not invent numbers.
+- Clearly label live AI output, test mock output, and template fallback output.
+
+The specification is ambiguous about requiring representation from all five directions: the detailed rule gives a maximum of two per direction, while the introduction can be read as requiring each direction. Keep the engine's observed behavior unless the team clarifies otherwise.
+
+## Branch integration
+
+The simulation implementation is currently on `feature/simulation`; the backend draft is on `feature/agents-backend`. They do not yet share the simulation files. Coordinate branch integration before claiming the backend path runs end to end.
