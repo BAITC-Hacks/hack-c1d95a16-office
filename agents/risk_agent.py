@@ -13,8 +13,8 @@ class RiskAnalysis(BaseModel):
     model_config = ConfigDict(extra="forbid")
     risk_level: Literal["low", "medium", "high"]
     risks: list[str]
-    critical_findings: list[str] = Field(default_factory=list)
-    warnings: list[str] = Field(default_factory=list)
+    critical_findings: list[str]
+    warnings: list[str]
 
 
 class RiskAgent:
