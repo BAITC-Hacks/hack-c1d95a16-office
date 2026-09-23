@@ -44,10 +44,13 @@ class BootstrapOut(APIModel):
 
 class PlanIn(APIModel):
     """Frontend selection; prices and scores are never accepted from the client."""
-
     dataset_version: str = Field(alias="datasetVersion")
     district_id: str = Field(alias="districtId")
     action_ids: list[str] = Field(alias="actionIds")
+
+
+class OptimizePlanIn(PlanIn):
+    top_n: int = Field(default=5, ge=1, le=10, alias="topN")
 
 
 class MetricChange(APIModel):
@@ -66,23 +69,3 @@ class SimulationOut(APIModel):
     projected_score: float = Field(alias="projectedScore")
     metrics: list[MetricChange]
     assumptions: list[str]
-
-
-class AnalysisIn(APIModel):
-    scenario_id: str = Field(alias="scenarioId")
-    dataset_version: str = Field(alias="datasetVersion")
-    mode: Literal["auto", "live", "mock", "template"] = "auto"
-
-
-class AnalysisOut(APIModel):
-    scenario_id: str = Field(alias="scenarioId")
-    summary: str
-    strengths: list[str]
-    risks: list[str]
-    recommendations: list[str]
-    source: Literal["live", "mock", "template", "template_fallback"]
-
-
-class OptimizeIn(APIModel):
-    dataset_version: str = Field(alias="datasetVersion")
-    top_n: int = Field(default=5, ge=1, le=10, alias="topN")
