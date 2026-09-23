@@ -13,8 +13,8 @@ class PolicyAnalysis(BaseModel):
     model_config = ConfigDict(extra="forbid")
     summary: str
     strengths: list[str]
-    tradeoffs: list[str] = Field(default_factory=list)
-    district_observations: list[str] = Field(default_factory=list)
+    tradeoffs: list[str]
+    district_observations: list[str]
 
 
 class PolicyAgent:
