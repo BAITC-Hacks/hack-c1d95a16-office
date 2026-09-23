@@ -1,65 +1,52 @@
-import { z } from 'zod';
-import { analysisSchema, cityDataSchema, simulationSchema, type Plan, type SimulationResult } from '../types';
-import { demoData } from '../data/demo';
+import {z} from 'zod';
+import {parseAnalysis,parseCityData,parseOptimization,parseSimulation,toWirePlan} from './contracts';
+import {assertDemoPlan,demoCityData,demoSimulation,demoAnalysis,demoOptimization} from '../data/demo';
+import type {Plan} from '../types';
 
-const base = import.meta.env.VITE_API_BASE_URL?.trim() ?? '';
-export const isDemo = !base;
-export const canSimulate = Boolean(base && import.meta.env.VITE_SIMULATE_PATH?.trim());
-export const canAnalyze = Boolean(base && import.meta.env.VITE_ANALYZE_PATH?.trim());
-
-// All paths and response shapes are a PROPOSED contract, pending Member 2.
-// There are intentionally no guessed route defaults or browser-side AI keys.
-async function request<T>(path: string | undefined, schema: z.ZodType<T>, body?: unknown, signal?: AbortSignal): Promise<T> {
-  if (!path?.trim()) throw new Error('API жолы бапталмаған. Member 2 берген маршрутты енгізіңіз.');
-  if (!/^https?:\/\//.test(base)) throw new Error('Backend адресі http:// немесе https:// арқылы басталуы керек.');
-  const controller = new AbortController();
-  const cancel = () => controller.abort();
-  signal?.addEventListener('abort', cancel, { once: true });
-  if (signal?.aborted) controller.abort();
-  let timeout = false;
-  const timer = setTimeout(() => { timeout = true; controller.abort(); }, 30000);
-  try {
-    const response = await fetch(`${base.replace(/\/$/, '')}/${path.replace(/^\//, '')}`, {
-      method: body === undefined ? 'GET' : 'POST',
-      headers: body === undefined ? undefined : { 'Content-Type': 'application/json' },
-      body: body === undefined ? undefined : JSON.stringify(body),
-      signal: controller.signal,
-    });
-    if (!response.ok) {
-      const details: Record<number, string> = {
-        401: 'Backend-ке кіру рұқсаты қажет.', 403: 'Backend сұранымға рұқсат бермеді.',
-        422: 'Backend таңдауларды қабылдамады. Бюджет пен деректерді тексеріңіз.',
-        429: 'Сұраным шегіне жетті. Біраздан кейін қайталап көріңіз.',
-      };
-      throw new Error(details[response.status] ?? `Сервис қатесі (${response.status}). Қайталап көріңіз.`);
+export const API_BASE_URL=import.meta.env.VITE_API_BASE_URL?.trim()||'http://localhost:8000';
+const TIMEOUT_MS=30000;
+function validationMessage(raw:unknown):string {
+  const text=JSON.stringify(raw).toLowerCase();
+  if(/budget|бюджет|total_cost/.test(text)) return 'Бюджеттен асып кетті. Шараларды өзгертіп, қайта жіберіңіз.';
+  if(/exactly|five|5 decisions|decision.*count/.test(text)) return 'Симуляция үшін тура 5 шешім қажет.';
+  if(/conflict|incompatib|конфликт/.test(text)) return 'Таңдалған шаралар өзара үйлеспейді. Шаралар мен аудандарды тексеріңіз.';
+  if(/duplicate|repeat/.test(text)) return 'Бір шараны қайталап таңдауға болмайды.';
+  return 'Сценарий қабылданбады. Бес шешім, аудан, бюджет және конфликт ережелерін тексеріңіз.';
+}
+async function request(path:string,body:unknown|undefined,signal?:AbortSignal):Promise<unknown>{
+  const controller=new AbortController();let timedOut=false;
+  const cancel=()=>controller.abort();signal?.addEventListener('abort',cancel,{once:true});if(signal?.aborted)controller.abort();
+  const timer=setTimeout(()=>{timedOut=true;controller.abort();},TIMEOUT_MS);
+  try{
+    const response=await fetch(`${API_BASE_URL.replace(/\/$/,'')}${path}`,{method:body===undefined?'GET':'POST',headers:body===undefined?undefined:{'Content-Type':'application/json'},body:body===undefined?undefined:JSON.stringify(body),signal:controller.signal});
+    const raw:unknown=await response.json().catch(()=>null);
+    if(!response.ok){
+      if(response.status===422||response.status===400) throw new Error(validationMessage(raw));
+      if(response.status===404) throw new Error(`${path} маршруты backend-те табылмады. Сервердің жаңа нұсқасын қосыңыз.`);
+      if(response.status===409) throw new Error('Датасет жаңарған. Бастапқы деректерді қайта жүктеңіз.');
+      if(response.status===429) throw new Error('Сұраным шегіне жетті. Біраздан кейін қайталаңыз.');
+      if(response.status===503) throw new Error('Backend немесе есептеу қозғалтқышы уақытша қолжетімсіз.');
+      throw new Error(`Сервер қатесі (${response.status}). Қайта сұратып көріңіз.`);
     }
-    const raw: unknown = await response.json();
-    const parsed = schema.safeParse(raw);
-    if (!parsed.success) throw new Error('Backend жауабы келісілген дерек құрылымына сәйкес емес.');
-    return parsed.data;
-  } catch (error) {
-    if (timeout) throw new Error('Сервис 30 секунд ішінде жауап бермеді. Қайталап көріңіз.');
-    if (error instanceof TypeError) throw new Error('Backend-пен байланыс жоқ. Сервер адресі мен CORS баптауын тексеріңіз.');
+    if(raw&&typeof raw==='object'&&'valid' in raw&&raw.valid===false)throw new Error(validationMessage(raw));
+    return raw;
+  }catch(error){
+    if(timedOut) throw new Error('Сервер 30 секунд ішінде жауап бермеді. Қайта сұратыңыз.');
+    if(error instanceof TypeError)throw new Error('Backend-пен байланыс жоқ. Сервердің іске қосылғанын, API адресін және CORS баптауын тексеріңіз.');
     throw error;
-  } finally {
-    clearTimeout(timer);
-    signal?.removeEventListener('abort', cancel);
-  }
+  }finally{clearTimeout(timer);signal?.removeEventListener('abort',cancel);}
 }
-
-export async function loadCityData(signal?: AbortSignal) {
-  if (isDemo) return cityDataSchema.parse(demoData);
-  return request(import.meta.env.VITE_BOOTSTRAP_PATH, cityDataSchema, undefined, signal);
+function parse<T>(fn:()=>T):T{try{return fn();}catch(e){if(e instanceof z.ZodError)throw new Error('Backend жауабы толық API келісіміне сәйкес емес. Member 2-мен JSON құрылымын тексеріңіз.');throw e;}}
+export async function loadCityData(signal?:AbortSignal){
+  try {
+  const health=await request('/health',undefined,signal);
+  const h=z.object({status:z.string(),simulation_engine:z.string().optional()}).safeParse(health);
+  if(!h.success||h.data.simulation_engine==='unavailable')throw new Error('Есептеу қозғалтқышы қолжетімсіз. Backend пен simulation интеграциясы қажет.');
+  const [districts,measures,baseline]=await Promise.all(['/districts','/measures','/baseline'].map(path=>request(path,undefined,signal)));
+  return parse(()=>parseCityData(districts,measures,baseline));
+  } catch(error) { if(signal?.aborted) throw error; return structuredClone({...demoCityData,fallbackReason:error instanceof Error?error.message:'Backend қолжетімсіз.'}); }
 }
-export async function simulate(plan: Plan, signal?: AbortSignal) {
-  const result = await request(import.meta.env.VITE_SIMULATE_PATH, simulationSchema, plan, signal);
-  if (result.datasetVersion !== plan.datasetVersion) throw new Error('Сценарийдің дерек нұсқасы сәйкес емес. Бастапқы деректерді қайта жүктеңіз.');
-  return result;
-}
-export async function analyze(result: SimulationResult, signal?: AbortSignal) {
-  // Server must look up/recompute this scenario. Never trust a browser-supplied score.
-  const analysis = await request(import.meta.env.VITE_ANALYZE_PATH, analysisSchema,
-    { scenarioId: result.scenarioId, datasetVersion: result.datasetVersion }, signal);
-  if (analysis.scenarioId !== result.scenarioId) throw new Error('AI талдауы ағымдағы сценарийге сәйкес емес.');
-  return analysis;
-}
+export async function simulate(plan:Plan,mode:'demo'|'backend',signal?:AbortSignal){if(mode==='demo'){assertDemoPlan(plan.decisions);return structuredClone(demoSimulation);}return parseSimulationSafe(await request('/simulate',toWirePlan(plan.decisions),signal));}
+function parseSimulationSafe(raw:unknown){return parse(()=>parseSimulation(raw));}
+export async function analyze(plan:Plan,mode:'demo'|'backend',signal?:AbortSignal){if(mode==='demo'){assertDemoPlan(plan.decisions);return structuredClone(demoAnalysis);}const raw=await request('/ai/analyze',toWirePlan(plan.decisions),signal);return parse(()=>parseAnalysis(raw));}
+export async function optimize(plan:Plan,mode:'demo'|'backend',signal?:AbortSignal){if(mode==='demo'){assertDemoPlan(plan.decisions);return structuredClone(demoOptimization);}const raw=await request('/optimize',toWirePlan(plan.decisions),signal);return parse(()=>parseOptimization(raw));}

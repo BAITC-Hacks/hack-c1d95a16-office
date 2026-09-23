@@ -1,84 +1,35 @@
-# Member 2-ге: API құрылымы бойынша ұсыныс
+# Seven-endpoint integration contract — pending backend confirmation
 
-**Мәртебесі: келісілмеген ұсыныс. Төмендегі құрылымдар нақты сервер API-інің сипаттамасы емес. Endpoint атаулары әдейі бекітілмеген.**
+Inspected backend/API_CONTRACT.md, backend/schemas.py and backend/routes.py at backend commit a30f4e10b9fd6dacb6ee58a7c40f0472700e1edc. They still use `{datasetVersion,districtId,actionIds}`, GET /bootstrap and POST /ai/optimize. /baseline and /optimize are absent; /simulate returns only a single district view. This cannot represent different districts for different measures or the requested five-district result. Frontend does not silently transform multiple districts into one.
 
-## Келісу қажет
+The requested seven-route interface below is implemented in the client and is a PROPOSAL until Member 2 publishes it. Catalog and engine result fields follow the existing simulation engine shapes; council fields follow the existing backend AI response.
 
-1. Backend URL, бастапқы деректер / simulation / analysis маршруттары, HTTP әдістері және авторизация тәртібі қандай?
-2. Нақты JSON жауап мысалдары немесе OpenAPI файлы бар ма?
-3. Аудан және шара идентификаторлары, бес бағыттың атаулары, бастапқы бюджет пен ақша бірлігі қандай?
-4. Бір жоспар бүкіл қалаға ма, әлде бір ауданға ма? Frontend уақытша бір аудан және әр бағыттан бір шара моделін қолданады.
-5. Бес шара міндетті ме? Аудандарға шектеу, қайталану, өзара үйлеспейтін шаралар бар ма?
-6. Score шкаласы, бастапқы және жаңа мән, метрикалардың өлшемдері мен түсіндірмесі қандай?
-7. Simulation жауабы синхронды ма, әлде job/polling керек пе? AI жауабы құрылымды JSON ба, әлде stream бе?
-8. CORS ішінде `http://127.0.0.1:5173` және қажет болса `http://localhost:5173` рұқсат етіле ме?
+## Input
 
-## Ұсынылған бастапқы деректер жауабы
+POST /simulate, /optimize and /ai/analyze:
 
-```ts
-type Category = 'transport' | 'green' | 'social' | 'safety' | 'services';
-type Bootstrap = {
-  datasetVersion: string;
-  cityName: string;
-  budget: number;          // > 0; ең көбі 2 ондық таңба
-  budgetUnit: string;
-  districts: {
-    id: string;
-    name: string;
-    description: string;
-    population?: number;
-    metrics: { label: string; value: number; unit: string }[];
-  }[];
-  actions: {
-    id: string;
-    category: Category;
-    title: string;
-    description: string;
-    cost: number;          // >= 0; ең көбі 2 ондық таңба
-    districtIds?: string[]; // жоқ болса барлық ауданға қолжетімді
-  }[];
-};
+```json
+{"decisions":[{"measure_id":"M7","district":"NURA"},{"measure_id":"M8","district":"NURA"},{"measure_id":"M10","district":"NURA"},{"measure_id":"M12"},{"measure_id":"M5","district":"SARYARKA"}]}
 ```
 
-ID мәндері бірегей, сандар finite болуы керек. Бос тізімдерде UI «дерек жоқ» күйін көрсетеді. Қазір `src/types.ts` осы форматты тексереді. Нақты API басқа форматта болса, frontend адаптері өзгертіледі.
+No cost, score or effect is sent. City measures omit district. Backend must enforce all official rules.
 
-## Есептеу
+## Responses
 
-Frontend жіберетін ұсынылған POST денесі:
+- GET /health: `{status:"ok",simulation_engine:"available"}`.
+- GET /districts: array `{name: ESIL|ALMATY|SARYARKA|BAIKONUR|NURA, population_share:number, indicators:{T1,T2,E1,E2,S1,S2,B1,B2,C1,C2}}`.
+- GET /measures: array `{id,name,category:TRANSPORT|ECOLOGY|SOCIAL|SAFETY|SERVICES,scope:DISTRICT|CITY,cost,lag,effects:{indicator:number}}`.
+- GET /baseline and POST /simulate: full engine result `{valid:true,total_cost,remaining_budget,score,baseline_score,score_delta,city_average,weakest_district,critical_count,districts:{ESIL:{initial_score,final_score,initial_indicators,final_indicators,indicator_deltas},...all five}}`. Baseline cost=0, remaining=100. All ten indicators and deltas required per district. Partial numbers are not invented.
+- POST /ai/analyze: `{analysis:{policy,risk,optimizer,executive}|null,aiStatus:{status,message?}}`, with existing backend council field names. Missing AI configuration shows an unavailable message; simulation result stays visible.
+- POST /optimize: existing optimizer envelope `{simulation:full_engine_result,scenarios:[{score,total_cost,weakest_district,critical_count,selected_measures:[{measure_id,district?}]}],recommended:{improvement:number},comparison?:{total_cost_delta,critical_count_delta}}`. First scenario is backend-ranked best. Optional differences show “Сервер бермеді” when omitted.
 
-```ts
-{ datasetVersion: string; districtId: string; actionIds: string[] }
-```
+Exact executable schemas: src/api/contracts.ts. Errors: non-2xx, or `{valid:false}`. CORS must allow http://127.0.0.1:5173 and http://localhost:5173.
 
-Ұсынылған жауап:
+## Member 2 action items
 
-```ts
-{
-  scenarioId: string;
-  datasetVersion: string;
-  spent: number;
-  remaining: number;
-  baselineScore: number;
-  projectedScore: number;
-  metrics: { label: string; before: number; after: number; unit: string }[];
-  assumptions: string[];
-}
-```
+1. Confirm/update the per-decision district request instead of PlanIn's single district.
+2. Expose /baseline, /optimize and full simulation output without reducing to SimulationOut.
+3. Confirm optimizer envelope and that scenarios[0] is recommended.
+4. Send actual OpenAPI/JSON fixtures so contract tests can use server-produced samples.
 
-Сервер шаралардың бағасын, рұқсатын, бюджет пен таңдауларды өзі тексереді. Score тек Member 1 есептеуінен келеді. Frontend ешқандай Score жібермейді. `spent + remaining` бастапқы бюджетке тең болуы тиіс.
-
-## AI талдауы
-
-Есептеу сәтті аяқталғаннан кейін пайдаланушы жеке батырмамен сұратады. Ұсынылған POST: `{ scenarioId, datasetVersion }`. Сервер сценарийді өзі алады; браузер жіберген Score-ға сенбейді.
-
-```ts
-{
-  scenarioId: string;
-  summary: string;
-  strengths: string[];
-  risks: string[];
-  recommendations: string[];
-}
-```
-
-AI мәтіні қазақша, есептелген нәтижелерге сүйенуі керек. Кілттер тек backend-те. Таңдаулар өзгергенде frontend алдыңғы нәтиже мен AI мәтінін жояды және аяқталмаған сұранымды тоқтатады. 30 секундтан ұзақ жұмыс қажет болса, polling/streaming-ті бірге келісеміз.
+Until then the UI provides explicitly labelled static demo fixtures. No fabricated response is presented as a live calculation.

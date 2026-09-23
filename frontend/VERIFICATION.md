@@ -1,23 +1,8 @@
-# Member 3 тексеру есебі
+# Verification — 2026-09-23
 
-2026-09-23 · жергілікті `feature/frontend` тармағы.
-
-## Орындалды
-
-- Тәуелділіктер pnpm арқылы орнатылды; `pnpm-lock.yaml` сақталған.
-- `pnpm build`: TypeScript тексеруі және Vite 8.3.0 production жинағы сәтті, соңғы жинақта ескерту жоқ.
-- `pnpm test`: 2 файлдағы 26 тест өтті. Бюджет/деректер схемалары және HTTP клиенті тексерілді.
-- Dev сервер: `http://127.0.0.1:5173/`.
-- Браузерде: 12 бірліктік шараны 24 бірлікке ауыстыру → шығын 24, таңдаулар саны 1.
-- Браузерде: 24 + 16 + 25 + 29 + 6 → 100 жұмсалған, 0 қалған, 5/5.
-- Браузерде: осы жағдайда 38 бірліктік көлік шарасы disabled.
-- Браузерде: «Қайта бастау» → 0 жұмсалған, 100 қалған, 0/5.
-- Браузерде: аудан ауыстыру таңдаулар мен шығынды тазартады.
-- Көмек терезесі ашылады және жабылады.
-- 390×844 және 1366×900 өлшемдерінде бет көлденең шықпайды; екі өлшемде көрініс қаралды. Уақытша өлшем баптауы тексеруден кейін алынды.
-- Қаралған браузер console жазбаларында error жоқ.
-- Git origin ресми репозиторийге қарайды. Бастапқы README хэші өзгермеген, Git жұмысындағы жаңа файлдар тек `frontend/` ішінде.
-
-## Шектеулер
-
-HTTP клиентінің тесттері `fetch` жауабын mock арқылы береді. Нақты backend, нақты датасет, Score/AI нәтижелерімен толық интеграция тексерілген жоқ. UI ішінде loading/empty/error күйлері бар; live сервермен бұл күйлер қолмен тексерілген жоқ. API келісімі Member 2-мен бекітілуі қажет. Deploy, push және `main` merge орындалған жоқ.
+- `pnpm test`: PASS, 26 tests in src/api/client.test.ts. Covers request body, simulation response validation, incomplete legacy response rejection, 400/422, missing route, timeout, network fallback, cancellation, AI unavailable, optimizer optional differences, complete demo flow, fixture-plan mismatch, budget/count/category/duplicate/district/conflict validation.
+- `pnpm build`: PASS, TypeScript and Vite production bundle.
+- Browser http://127.0.0.1:5173: offline startup displayed explicit demo banner; loaded example; simulated (56.54 displayed); AI council and optimizer comparison rendered; reset cleared score and set count 0/5 with simulation disabled.
+- Layout inspected at the app's narrow viewport and 1366x900 desktop viewport.
+- Actual live backend execution NOT verified: localhost:8000 unavailable. Seven-route backend agreement remains pending; see API_CONTRACT_PROPOSAL.md. Tests use controlled fixtures, not a live server.
+- Frontend has no official simulation calculation engine. Demo fixtures are static and restricted to their exact example plan; arbitrary offline scoring is not supported.

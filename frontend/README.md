@@ -1,58 +1,43 @@
-# QALA — «5 сағатқа әкім» frontend
+# QALA — «5 сағатқа әкім»
 
-Member 3 · React + Vite + TypeScript. Барлық өзгерістер `frontend/` ішінде.
+Member 3 frontend, React + Vite + TypeScript. Changes are limited to `frontend/`.
 
-## Іске қосу
+## Run
 
-Node.js 22.18+ (осы ортада 24.19) және pnpm 11 қажет. Репозиторийдің `frontend/` қалтасында:
+Node >=22.18, pnpm:
 
 ```sh
-pnpm install --frozen-lockfile
+cd frontend
+pnpm install
+cp .env.example .env
 pnpm dev
 ```
 
-Браузер: http://127.0.0.1:5173. Порт бос болмаса, сервер басқа портқа жасырын ауыспайды. `pnpm build` production жинағын `dist/` ішіне жазады; `pnpm preview` оны 4173 портында ашады. `pnpm test` автоматты тексерулерді орындайды. Native config loader үшін көрсетілген Node нұсқасы қажет.
+PowerShell: use `Copy-Item .env.example .env` instead of `cp`.
+Open http://127.0.0.1:5173. Configure `VITE_API_BASE_URL=http://localhost:8000` and restart Vite after changing it. Never put OpenAI or NVIDIA secret keys in VITE variables.
 
-## Демо режимі
+```sh
+pnpm test
+pnpm build
+pnpm preview
+```
 
-`.env` қажет емес. `VITE_API_BASE_URL` бос болса, экранда «Демо деректер» белгісімен `src/data/demo.ts` қолданылады. Үш ауданның атауы, халқы, көрсеткіштері, 100 бірлік бюджет және 15 шараның бағасы — шартты мысалдар. Бұл ресми датасет емес.
+## Features
 
-1. Ауданды таңдаңыз.
-2. Бес бағыттың әрқайсысынан бір шара таңдаңыз.
-3. Сол бағыттағы басқа шара бұрынғысын ауыстырады. Оның құны қайта есептеледі.
-4. Бюджетке сыймайтын нұсқалар бұғатталады. Шараны алып тастауға болады.
-5. «Қайта бастау» және аудан ауыстыру таңдауларды тазартады.
+Kazakh dashboard, 5 districts, 14 measures, per-measure district selection, budget preview, exactly five decisions, at most two per category, duplicate and conflict validation. Reset clears selections and pending results. Requests are cancelled and stale responses discarded when the plan changes.
 
-Frontend тек шығынды қосады. Score формуласын есептемейді. Backend жоқ кезде «Есептеу сервисі қосылмаған» көрсетіледі, есептеу мен AI батырмалары белсенді емес. AI мәтіні ойдан жасалмайды.
+Simulation metrics, district before/after charts and all indicator changes come from validated backend responses. No simulation formula or optimizer runs in the frontend. Cost summation and selection validation are UX previews; the backend remains authoritative.
 
-## Интеграция
+Four AI council cards and optimizer comparison retain real numeric results even when AI text is unavailable. Loading, empty catalog, malformed responses, 400/422, 404, 409, 429, 503, network failures and a 30-second timeout are handled.
 
-`API_CONTRACT_PROPOSAL.md` — Member 2 келісуіне арналған ұсыныс, бекітілген API емес. Нақты endpoint жолдарының әдепкі мәндері жоқ. Келісілгеннен кейін `.env.example` файлын `.env` деп көшіріп, төрт public баптауды толтырыңыз, dev серверін қайта іске қосыңыз:
+## Offline demonstration
 
-- `VITE_API_BASE_URL`: backend адресі;
-- `VITE_BOOTSTRAP_PATH`: бастапқы деректерді алу жолы;
-- `VITE_SIMULATE_PATH`: есептеу жолы;
-- `VITE_ANALYZE_PATH`: AI талдау жолы.
+If startup API calls fail, an explicit **Демо режимі** banner explains why. Select **Демо сценарийді жүктеу**, then simulate, request the AI council, and open optimizer comparison. These are static presentation fixtures, not live AI or client-side official calculations. The fixture belongs ONLY to M7/NURA, M8/NURA, M10/NURA, M12/CITY, M5/SARYARKA. Arbitrary plans remain editable and validated but cannot receive this fixture's score. Demo optimization compares the same example with itself and explicitly says no optimization was performed.
 
-Модельдер сәйкес келмесе, `src/api/client.ts` адаптерін және `src/types.ts` схемаларын келісімге бейімдеу керек. Live режимінде қате шықса, демоға автоматты ауысу болмайды. Сұраным уақыты 30 секундпен шектеледі; таңдау өзгерсе, бұрынғы жауап күшін жояды. OpenAI/NVIDIA құпия кілттерін `VITE_*` айнымалысына салмаңыз: олар браузерге ашық. Кілттер Member 2 серверінде сақталады.
+Use **Backend-ке қайта қосылу** after the server starts. Live action failures display an error instead of silently replacing a real scenario with demo numbers.
 
-## Құрылым
+## Integration status
 
-- `src/Dashboard.tsx`: күй, сценарий, жүктелу/қате/бос күй;
-- `src/components/`: DistrictCards, BudgetBar, DecisionSelector, ScorePanel, AIAnalysisPanel;
-- `src/api/client.ts`: HTTP байланысы және жауапты тексеру;
-- `src/types.ts`: ұсынылған құрылымдар мен Zod валидациясы;
-- `src/data/demo.ts`: бөлек демо мысалдар;
-- `src/lib/budget.ts`: бюджет бойынша таңдау;
-- `src/styles.css`: ноутбук пен телефонға бейімделген дизайн.
+Requested routes: GET /health, /districts, /measures, /baseline; POST /simulate, /optimize, /ai/analyze. All requests are centralized in `src/api/client.ts`; runtime response validation and mapping in `src/api/contracts.ts`.
 
-Шрифт Google Fonts арқылы жүктеледі; интернетсіз жүйелік қаріп қолданылады. Аудан карточкаларындағы сурет CSS арқылы жасалған, нақты карта емес. Әзірше бір сценарий бір ауданға арналған: бұл шешімді Member 2-мен келісу қажет. Жаңартқанда таңдаулар сақталмайды.
-
-## Тексеру сценарийлері
-
-- Бір бағытта 12 бірлік шараны 24 бірлік шараға ауыстырғанда шығын 24 болуы керек.
-- 24 + 16 + 25 + 29 + 6 = 100 бірлік: бес таңдау қабылданады; қымбатырақ ауыстыру бұғатталады.
-- «Қайта бастау»: шығын 0, қалдық 100, таңдау 0/5.
-- API конфигурациясында: жүктелу, бос тізім, қате және қайталау; бұлар live backend-пен қосымша тексерілуі керек.
-
-Deployment пен `main` тармағына біріктіру бұл кезеңге кірмейді.
+The backend branch inspected at commit `a30f4e10b9fd6dacb6ee58a7c40f0472700e1edc` still contains the older single-district contract, no /baseline, and /ai/optimize instead of /optimize. Therefore live seven-route compatibility is pending Member 2's update; it has not been verified against a running server. See API_CONTRACT_PROPOSAL.md for exact expectations. No backend, agent, or simulation files were changed.
