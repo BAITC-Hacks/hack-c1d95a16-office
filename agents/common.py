@@ -42,7 +42,7 @@ def ask_agent(prompt: str, facts: dict[str, Any], schema: type[T]) -> T:
                     "content": json.dumps(facts, ensure_ascii=False, separators=(",", ":")),
                 },
             ],
-            response_format={"type": "json_object"},
+            response_format={\n                "type": "json_schema",\n                "json_schema": {\n                    "name": schema.__name__.lower(),\n                    "strict": True,\n                    "schema": schema.model_json_schema(),\n                },\n            },
         )
         content = response.choices[0].message.content
         if not content:
