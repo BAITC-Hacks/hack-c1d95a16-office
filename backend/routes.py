@@ -1,57 +1,35 @@
 """Backend endpoints mapped to the frontend contract and simulation engine."""
 from __future__ import annotations
 
-from collections import OrderedDict
 from hashlib import sha256
 from importlib import import_module
 import json
-from threading import RLock
 from types import ModuleType
 from typing import Any
-from uuid import uuid4
 
 from fastapi import APIRouter, HTTPException
 
-from agents.orchestrator import AIServiceError, analyze_result
-from backend.schemas import (
-    ActionOut,
-    AnalysisIn,
-    AnalysisOut,
-    BootstrapOut,
-    OptimizeIn,
-    PlanIn,
-    SimulationOut,
-)
+from agents.orchestrator import AIConfigurationError, AIOrchestrator, AIServiceError
+from backend.schemas import ActionOut, BootstrapOut, OptimizePlanIn, PlanIn, SimulationOut
 
 router = APIRouter()
-_SCENARIO_LIMIT = 256
-_scenarios: OrderedDict[str, dict[str, Any]] = OrderedDict()
-_scenarios_lock = RLock()
+_ORCHESTRATOR = AIOrchestrator()
 
 _CATEGORY_IDS = {
-    "TRANSPORT": "transport",
-    "ECOLOGY": "green",
-    "SOCIAL": "social",
-    "SAFETY": "safety",
-    "SERVICES": "services",
+    "TRANSPORT": "transport", "ECOLOGY": "green", "SOCIAL": "social",
+    "SAFETY": "safety", "SERVICES": "services",
 }
 _DISTRICT_NAMES = {
-    "ESIL": "Есіл",
-    "ALMATY": "Алматы",
-    "SARYARKA": "Сарыарқа",
-    "BAIKONUR": "Байқоңыр",
-    "NURA": "Нұра",
+    "ESIL": "Есіл", "ALMATY": "Алматы", "SARYARKA": "Сарыарқа",
+    "BAIKONUR": "Байқоңыр", "NURA": "Нұра",
 }
 _ACTION_TITLES = {
-    "M1": "Автобус жолақтары",
-    "M2": "Ақылды бағдаршамдар",
-    "M3": "Жеңіл рельсті көлік желісі",
-    "M4": "Саябақ немесе сквер",
+    "M1": "Автобус жолақтары", "M2": "Ақылды бағдаршамдар",
+    "M3": "Жеңіл рельсті көлік желісі", "M4": "Саябақ немесе сквер",
     "M5": "Жеке секторды таза отынға ауыстыру",
     "M6": "Қаланы көгалдандыру бағдарламасы",
     "M7": "Модульдік мектеп пен балабақша",
-    "M8": "Отбасылық денсаулық орталығы",
-    "M9": "Ауладағы спорт хабтары",
+    "M8": "Отбасылық денсаулық орталығы", "M9": "Ауладағы спорт хабтары",
     "M10": "Көшені жарықтандыру және камералар",
     "M11": "Қауіпсіз өткелдер мен мектеп аймақтары",
     "M12": "Бірыңғай цифрлық өтініш платформасы",
@@ -59,33 +37,22 @@ _ACTION_TITLES = {
     "M14": "Коммуналдық авариялық бригадалар",
 }
 _INDICATOR_LABELS = {
-    "T1": "Көлік кептелісін азайту",
-    "T2": "Қоғамдық көлік қолжетімділігі",
-    "E1": "Көгалдандыру",
-    "E2": "Ауа сапасы",
-    "S1": "Мектептер мен балабақшалар",
-    "S2": "Алғашқы медициналық көмек",
-    "B1": "Көшедегі қауіпсіздік",
-    "B2": "Жол қозғалысы қауіпсіздігі",
-    "C1": "Коммуналдық желілер сенімділігі",
-    "C2": "Тұрғындар өтініштерін өңдеу",
+    "T1": "Көлік кептелісін азайту", "T2": "Қоғамдық көлік қолжетімділігі",
+    "E1": "Көгалдандыру", "E2": "Ауа сапасы",
+    "S1": "Мектептер мен балабақшалар", "S2": "Алғашқы медициналық көмек",
+    "B1": "Көшедегі қауіпсіздік", "B2": "Жол қозғалысы қауіпсіздігі",
+    "C1": "Коммуналдық желілер сенімділігі", "C2": "Тұрғындар өтініштерін өңдеу",
 }
 
 
 def _simulation_engine() -> ModuleType:
-    """Load the team's package when the simulation branch is integrated."""
     try:
         return import_module("simulation")
     except ModuleNotFoundError as error:
-        if error.name == "simulation" or (
-            error.name is not None and error.name.startswith("simulation.")
-        ):
+        if error.name == "simulation" or (error.name and error.name.startswith("simulation.")):
             raise HTTPException(
                 status_code=503,
-                detail=(
-                    "Simulation engine is unavailable. Integrate "
-                    "feature/simulation with the backend branch first."
-                ),
+                detail="Simulation engine is unavailable. Integrate feature/simulation first.",
             ) from error
         raise
 
@@ -94,24 +61,15 @@ def _catalog(engine: ModuleType) -> dict[str, Any]:
     districts = engine.get_districts()
     actions = engine.get_measures()
     baseline = engine.calculate_baseline()
-    budget = baseline["remaining_budget"]
     fingerprint = json.dumps(
-        {
-            "schema": 1,
-            "districts": districts,
-            "actions": actions,
-            "budget": budget,
-            "baselineScore": baseline["baseline_score"],
-        },
-        sort_keys=True,
-        ensure_ascii=False,
-        separators=(",", ":"),
+        {"schema": 1, "districts": districts, "actions": actions,
+         "budget": baseline["remaining_budget"], "baselineScore": baseline["baseline_score"]},
+        sort_keys=True, ensure_ascii=False, separators=(",", ":"),
     ).encode("utf-8")
-    version = "sim-" + sha256(fingerprint).hexdigest()[:12]
     return {
-        "datasetVersion": version,
+        "datasetVersion": "sim-" + sha256(fingerprint).hexdigest()[:12],
         "cityName": "Астана — синтетическая модель",
-        "budget": budget,
+        "budget": baseline["remaining_budget"],
         "budgetUnit": "шартты бірлік",
         "districts": districts,
         "actions": actions,
@@ -120,86 +78,81 @@ def _catalog(engine: ModuleType) -> dict[str, Any]:
 
 def _bootstrap_payload(engine: ModuleType) -> dict[str, Any]:
     catalog = _catalog(engine)
-    district_out: list[dict[str, Any]] = []
-    for district in catalog["districts"]:
-        district_id = str(district["name"]).upper()
-        district_out.append(
-            {
-                "id": district_id,
-                "name": _DISTRICT_NAMES.get(district_id, district_id),
-                "description": "Жобаның синтетикалық моделіндегі аудан.",
-                "metrics": [
-                    {
-                        "label": _INDICATOR_LABELS.get(code, code),
-                        "value": value,
-                        "unit": "/100",
-                    }
-                    for code, value in district["indicators"].items()
-                ],
-            }
-        )
-
-    district_ids = [item["id"] for item in district_out]
-    actions_out: list[dict[str, Any]] = []
-    for action in catalog["actions"]:
-        action_id = str(action["id"]).upper()
-        scope = str(action["scope"]).upper()
-        category = _CATEGORY_IDS.get(str(action["category"]).upper())
+    district_ids = [str(item["name"]).upper() for item in catalog["districts"]]
+    districts_out = [
+        {
+            "id": str(item["name"]).upper(),
+            "name": _DISTRICT_NAMES.get(str(item["name"]).upper(), str(item["name"])),
+            "description": "Жобаның синтетикалық моделіндегі аудан.",
+            "metrics": [
+                {"label": _INDICATOR_LABELS.get(code, code), "value": value, "unit": "/100"}
+                for code, value in item["indicators"].items()
+            ],
+        }
+        for item in catalog["districts"]
+    ]
+    actions_out = []
+    for item in catalog["actions"]:
+        action_id = str(item["id"]).upper()
+        scope = str(item["scope"]).upper()
+        category = _CATEGORY_IDS.get(str(item["category"]).upper())
         if category is None:
-            raise HTTPException(
-                status_code=502,
-                detail=f"Unsupported simulation category for {action_id}.",
-            )
-        effects = action.get("effects", {})
-        effect_text = ", ".join(
-            f"{_INDICATOR_LABELS.get(code, code)} {float(amount):+g}"
-            for code, amount in effects.items()
+            raise HTTPException(status_code=502, detail=f"Unsupported simulation category for {action_id}.")
+        effects = ", ".join(
+            f"{_INDICATOR_LABELS.get(code, code)} {float(value):+g}"
+            for code, value in item.get("effects", {}).items()
         )
-        scope_text = "Қала бойынша" if scope == "CITY" else "Бір ауданға"
-        description = (
-            f"{scope_text}; лагы {action['lag']} тоқсан; толық каталог әсері: {effect_text}."
-        )
-        action_data: dict[str, Any] = {
-            "id": action_id,
-            "category": category,
-            "title": _ACTION_TITLES.get(action_id, action["name"]),
-            "description": description,
-            "cost": action["cost"],
+        action: dict[str, Any] = {
+            "id": action_id, "category": category,
+            "title": _ACTION_TITLES.get(action_id, item["name"]),
+            "description": f"{'Қала бойынша' if scope == 'CITY' else 'Бір ауданға'}; лагы {item['lag']} тоқсан; қозғалтқыштағы әсері: {effects}.",
+            "cost": item["cost"],
         }
         if scope != "CITY":
-            action_data["districtIds"] = district_ids
-        actions_out.append(action_data)
-
+            action["districtIds"] = district_ids
+        actions_out.append(action)
     return {
-        "datasetVersion": catalog["datasetVersion"],
-        "cityName": catalog["cityName"],
-        "budget": catalog["budget"],
-        "budgetUnit": catalog["budgetUnit"],
-        "districts": district_out,
-        "actions": actions_out,
+        "datasetVersion": catalog["datasetVersion"], "cityName": catalog["cityName"],
+        "budget": catalog["budget"], "budgetUnit": catalog["budgetUnit"],
+        "districts": districts_out, "actions": actions_out,
     }
 
 
-def _remember_scenario(
-    scenario_id: str,
-    dataset_version: str,
-    decisions: list[dict[str, Any]],
-    district_id: str,
-) -> None:
-    with _scenarios_lock:
-        _scenarios[scenario_id] = {
-            "datasetVersion": dataset_version,
-            "decisions": decisions,
-            "districtId": district_id,
-        }
-        _scenarios.move_to_end(scenario_id)
-        while len(_scenarios) > _SCENARIO_LIMIT:
-            _scenarios.popitem(last=False)
+def _prepare_decisions(engine: ModuleType, request: PlanIn) -> tuple[list[dict[str, Any]], str]:
+    catalog = _catalog(engine)
+    if request.dataset_version != catalog["datasetVersion"]:
+        raise HTTPException(status_code=409, detail="Dataset version changed. Reload /bootstrap and submit again.")
+    district_id = request.district_id.upper()
+    district_ids = {str(item["name"]).upper() for item in catalog["districts"]}
+    if district_id not in district_ids:
+        raise HTTPException(status_code=422, detail="Unknown districtId.")
+    scopes = {str(item["id"]).upper(): str(item["scope"]).upper() for item in catalog["actions"]}
+    decisions = []
+    for raw_id in request.action_ids:
+        action_id = raw_id.upper()
+        decision: dict[str, Any] = {"measure_id": action_id}
+        if scopes.get(action_id) != "CITY":
+            decision["district"] = district_id
+        decisions.append(decision)
+    return decisions, district_id
+
+
+def _run_engine(engine: ModuleType, request: PlanIn) -> tuple[list[dict[str, Any]], str, dict[str, Any], str]:
+    decisions, district_id = _prepare_decisions(engine, request)
+    result = engine.simulate_scenario({"decisions": decisions})
+    if not result.get("valid"):
+        raise HTTPException(status_code=422, detail={"message": "Invalid scenario.", "errors": result.get("errors", [])})
+    return decisions, district_id, result, _catalog(engine)["datasetVersion"]
+
+
+def _ai_status(error: Exception) -> dict[str, str]:
+    if isinstance(error, AIConfigurationError):
+        return {"status": "configuration_error", "code": "OPENAI_API_KEY_MISSING", "message": str(error)}
+    return {"status": "unavailable", "code": "AI_SERVICE_UNAVAILABLE", "message": str(error)}
 
 
 @router.get("/health")
 def health() -> dict[str, str]:
-    """The HTTP service is healthy even when its separately developed engine is absent."""
     try:
         _simulation_engine()
     except HTTPException:
@@ -209,144 +162,102 @@ def health() -> dict[str, str]:
 
 @router.get("/bootstrap", response_model=BootstrapOut, response_model_exclude_none=True)
 def bootstrap() -> dict[str, Any]:
-    """Return frontend-ready synthetic data derived from the simulation package."""
-    engine = _simulation_engine()
-    return _bootstrap_payload(engine)
+    return _bootstrap_payload(_simulation_engine())
 
 
 @router.get("/districts")
 def districts() -> list[dict[str, Any]]:
-    """Return the engine's canonical district records."""
     return _simulation_engine().get_districts()
 
 
 @router.get("/measures")
 def measures() -> list[dict[str, Any]]:
-    """Return the engine's canonical intervention catalog."""
     return _simulation_engine().get_measures()
 
 
 @router.post("/simulate", response_model=SimulationOut)
 def simulate(request: PlanIn) -> dict[str, Any]:
-    """Map frontend IDs to engine decisions; let the engine validate and score."""
     engine = _simulation_engine()
-    catalog = _catalog(engine)
-    if request.dataset_version != catalog["datasetVersion"]:
-        raise HTTPException(
-            status_code=409,
-            detail="Dataset version changed. Reload /bootstrap and submit again.",
-        )
-
-    district_id = request.district_id.upper()
-    district_ids = {
-        str(district["name"]).upper() for district in catalog["districts"]
-    }
-    if district_id not in district_ids:
-        raise HTTPException(status_code=422, detail="Unknown districtId.")
-
-    scopes = {
-        str(action["id"]).upper(): str(action["scope"]).upper()
-        for action in catalog["actions"]
-    }
-    decisions: list[dict[str, Any]] = []
-    for raw_action_id in request.action_ids:
-        action_id = raw_action_id.upper()
-        decision: dict[str, Any] = {"measure_id": action_id}
-        if scopes.get(action_id) != "CITY":
-            decision["district"] = district_id
-        decisions.append(decision)
-
-    result = engine.simulate_scenario({"decisions": decisions})
-    if not result.get("valid"):
-        raise HTTPException(
-            status_code=422,
-            detail={"message": "Invalid scenario.", "errors": result.get("errors", [])},
-        )
-
-    selected_district = result["districts"][district_id]
-    initial = selected_district["initial_indicators"]
-    final = selected_district["final_indicators"]
-    metrics = [
-        {
-            "label": _INDICATOR_LABELS.get(code, code),
-            "before": initial[code],
-            "after": final[code],
-            "unit": "/100",
-        }
-        for code in initial
-    ]
-    scenario_id = str(uuid4())
-    _remember_scenario(
-        scenario_id,
-        catalog["datasetVersion"],
-        decisions,
-        district_id,
-    )
+    _, district_id, result, version = _run_engine(engine, request)
+    selected = result["districts"][district_id]
     return {
-        "scenarioId": scenario_id,
-        "datasetVersion": catalog["datasetVersion"],
+        "scenarioId": "sim-" + sha256(json.dumps(result, sort_keys=True).encode()).hexdigest()[:16],
+        "datasetVersion": version,
         "spent": result["total_cost"],
         "remaining": result["remaining_budget"],
         "baselineScore": result["baseline_score"],
         "projectedScore": result["score"],
-        "metrics": metrics,
-        "assumptions": [
-            "Деректер — синтетикалық модель; бұл нақты қалалық болжам емес."
+        "metrics": [
+            {"label": _INDICATOR_LABELS.get(code, code), "before": before,
+             "after": selected["final_indicators"][code], "unit": "/100"}
+            for code, before in selected["initial_indicators"].items()
         ],
+        "assumptions": ["Деректер — синтетикалық модель; бұл нақты қалалық болжам емес."],
     }
 
 
-@router.post("/ai/analyze", response_model=AnalysisOut)
-def analyze(request: AnalysisIn) -> dict[str, Any]:
-    """Recompute a server-stored scenario before asking for an explanation."""
+@router.post("/ai/analyze")
+def analyze(request: PlanIn) -> dict[str, Any]:
     engine = _simulation_engine()
-    catalog = _catalog(engine)
-    if request.dataset_version != catalog["datasetVersion"]:
-        raise HTTPException(
-            status_code=409,
-            detail="Dataset version changed. Reload data and simulate again.",
-        )
-
-    with _scenarios_lock:
-        saved = _scenarios.get(request.scenario_id)
-        if saved is not None:
-            _scenarios.move_to_end(request.scenario_id)
-    if saved is None:
-        raise HTTPException(
-            status_code=404,
-            detail="Scenario not found or expired; simulate it again.",
-        )
-    if saved["datasetVersion"] != request.dataset_version:
-        raise HTTPException(status_code=409, detail="Scenario dataset version mismatch.")
-
-    result = engine.simulate_scenario({"decisions": saved["decisions"]})
-    if not result.get("valid"):
-        raise HTTPException(
-            status_code=409,
-            detail="Stored scenario is no longer valid for the current engine data.",
-        )
+    decisions, _, result, version = _run_engine(engine, request)
     try:
-        explanation = analyze_result(result, request.mode)
-    except AIServiceError as error:
-        raise HTTPException(status_code=503, detail=str(error)) from error
-    return {
-        "scenarioId": request.scenario_id,
-        **explanation,
-    }
+        analysis = _ORCHESTRATOR.analyze(engine, decisions, result)
+        return {
+            "datasetVersion": version,
+            "simulation": result,
+            "analysis": {key: value for key, value in analysis.items() if key != "optimized_scenarios"},
+            "optimizedScenarios": analysis["optimized_scenarios"],
+            "aiStatus": {"status": "available", "source": "openai"},
+        }
+    except (AIConfigurationError, AIServiceError, ValueError) as error:
+        return {
+            "datasetVersion": version,
+            "simulation": result,
+            "analysis": None,
+            "optimizedScenarios": [],
+            "aiStatus": _ai_status(error),
+        }
 
 
 @router.post("/ai/optimize")
-def optimize(request: OptimizeIn) -> dict[str, Any]:
-    """Delegate candidate search to the simulation engine's optimizer."""
+def optimize(request: OptimizePlanIn) -> dict[str, Any]:
     engine = _simulation_engine()
-    catalog = _catalog(engine)
-    if request.dataset_version != catalog["datasetVersion"]:
-        raise HTTPException(
-            status_code=409,
-            detail="Dataset version changed. Reload /bootstrap and submit again.",
-        )
-    scenarios = engine.find_best_scenarios(top_n=request.top_n)
+    decisions, _, current, version = _run_engine(engine, request)
+    candidates = engine.find_best_scenarios(top_n=request.top_n)
+    if not candidates:
+        raise HTTPException(status_code=502, detail="Simulation optimizer returned no scenarios.")
+    recommended = candidates[0]
+    comparison = engine.compare_scenarios(
+        {"decisions": decisions},
+        {"decisions": recommended["selected_measures"]},
+    )
+    if not comparison.get("valid"):
+        raise HTTPException(status_code=502, detail="Simulation engine could not compare scenarios.")
+    facts = {
+        "current": current,
+        "recommended": recommended,
+        "comparison": comparison,
+        "other_engine_candidates": candidates[1:],
+    }
+    try:
+        from agents.optimizer_agent import OptimizerExplanation
+        from agents.common import ask_agent
+        from agents.prompts import OPTIMIZER_PROMPT
+        explanation = ask_agent(OPTIMIZER_PROMPT, facts, OptimizerExplanation).reasoning
+        status = {"status": "available", "source": "openai"}
+    except (AIConfigurationError, AIServiceError) as error:
+        explanation = None
+        status = _ai_status(error)
     return {
-        "datasetVersion": catalog["datasetVersion"],
-        "scenarios": scenarios,
+        "datasetVersion": version,
+        "simulation": current,
+        "scenarios": candidates,
+        "recommended": {
+            "current_score": current["score"],
+            "recommended_score": recommended["score"],
+            "improvement": comparison["score_delta"],
+            "recommended_scenario": recommended["selected_measures"],
+            "reasoning": explanation,
+        },
+        "aiStatus": status,
     }
