@@ -56,8 +56,8 @@ Returns frontend-ready synthetic data:
 ```
 
 The sample abbreviates the arrays. `datasetVersion` is a stable hash of the
-engine's canonical districts, actions, and budget; it changes when that data
-changes. Population counts are omitted because the engine only supplies shares.
+engine's canonical districts, actions, budget, and baseline Score; it changes
+when the data or baseline calculation changes. Population counts are omitted because the engine only supplies shares.
 
 ### `GET /districts` and `GET /measures`
 
@@ -126,8 +126,8 @@ Response:
 ```
 
 `source` identifies `live`, `mock`, `template`, or
-`template_fallback`. The frontend's current Zod schema ignores this extra
-field; it may add it if the UI should display the analysis mode.
+`template_fallback`. The summary is prefixed with the source label so the
+current frontend, which strips unknown fields, still displays the analysis mode.
 
 ### `POST /ai/optimize`
 

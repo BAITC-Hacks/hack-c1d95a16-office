@@ -42,8 +42,24 @@ _DISTRICT_NAMES = {
     "BAIKONUR": "Байқоңыр",
     "NURA": "Нұра",
 }
+_ACTION_TITLES = {
+    "M1": "Автобус жолақтары",
+    "M2": "Ақылды бағдаршамдар",
+    "M3": "Жеңіл рельсті көлік желісі",
+    "M4": "Саябақ немесе сквер",
+    "M5": "Жеке секторды таза отынға ауыстыру",
+    "M6": "Қаланы көгалдандыру бағдарламасы",
+    "M7": "Модульдік мектеп пен балабақша",
+    "M8": "Отбасылық денсаулық орталығы",
+    "M9": "Ауладағы спорт хабтары",
+    "M10": "Көшені жарықтандыру және камералар",
+    "M11": "Қауіпсіз өткелдер мен мектеп аймақтары",
+    "M12": "Бірыңғай цифрлық өтініш платформасы",
+    "M13": "Жылу және су желілерін жаңғырту",
+    "M14": "Коммуналдық авариялық бригадалар",
+}
 _INDICATOR_LABELS = {
-    "T1": "Жолдардың өткізу қабілеті",
+    "T1": "Көлік кептелісін азайту",
     "T2": "Қоғамдық көлік қолжетімділігі",
     "E1": "Көгалдандыру",
     "E2": "Ауа сапасы",
@@ -85,6 +101,7 @@ def _catalog(engine: ModuleType) -> dict[str, Any]:
             "districts": districts,
             "actions": actions,
             "budget": budget,
+            "baselineScore": baseline["baseline_score"],
         },
         sort_keys=True,
         ensure_ascii=False,
@@ -140,12 +157,12 @@ def _bootstrap_payload(engine: ModuleType) -> dict[str, Any]:
         )
         scope_text = "Қала бойынша" if scope == "CITY" else "Бір ауданға"
         description = (
-            f"{scope_text}; лагы {action['lag']} тоқсан; әсері: {effect_text}."
+            f"{scope_text}; лагы {action['lag']} тоқсан; толық каталог әсері: {effect_text}."
         )
         action_data: dict[str, Any] = {
             "id": action_id,
             "category": category,
-            "title": action["name"],
+            "title": _ACTION_TITLES.get(action_id, action["name"]),
             "description": description,
             "cost": action["cost"],
         }

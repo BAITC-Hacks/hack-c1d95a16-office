@@ -38,7 +38,7 @@ def _analysis_shape(value: Any, source: str) -> dict[str, Any]:
     ):
         raise AIServiceError("AI response had an invalid structure.")
     return {
-        "summary": summary.strip(),
+        "summary": f"Тірі AI талдауы: {summary.strip()}" if source == "live" else f"{source}: {summary.strip()}",
         "strengths": value["strengths"],
         "risks": value["risks"],
         "recommendations": value["recommendations"],
@@ -90,7 +90,7 @@ def _template_analysis(result: dict[str, Any], source: str) -> dict[str, Any]:
         f"Шығын: {spent}, қалған бюджет: {remaining} шартты бірлік."
     )
     return {
-        "summary": summary,
+        "summary": f"{'Шаблондық түсіндірме' if source == 'template' else 'Резервтік шаблондық түсіндірме'}: {summary}",
         "strengths": strengths,
         "risks": risks,
         "recommendations": recommendations,
