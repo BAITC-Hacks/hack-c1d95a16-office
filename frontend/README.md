@@ -1,51 +1,139 @@
 # QALA — «5 сағатқа әкім»
 
-Member 3 frontend, React + Vite + TypeScript. Changes are limited to `frontend/`.
+## Қазақша
 
-## Run
+### Жоба туралы
 
-Node >=22.18, pnpm:
+**QALA — «5 сағатқа әкім»** — Астананы басқару шешімдерін бағалауға арналған AI қолдайтын қалалық симулятор. Қатысушы бес бағыттағы M1–M14 шараларының ішінен тура бес шешім таңдап, жалпы **100 шартты бірлік** бюджетті бөледі. Бағыттар: көлік, экология, әлеуметтік сала, қауіпсіздік және қалалық сервистер. Модель бес ауданды қамтиды: **Есіл, Алматы, Сарыарқа, Байқоңыр және Нұра**. Backend қосылған кезде симуляция мен Policy, Risk, Optimizer, Executive агенттерінің жауаптары серверден алынады.
+
+### Технологиялар
+
+- React 19, Vite 8, TypeScript.
+- Zod — API жауабының құрылымын тексеру.
+- Lucide React — интерфейс иконкалары.
+- Responsive CSS. Tailwind CSS бұл жобада қолданылмайды.
+
+### Жергілікті іске қосу
+
+Node.js **22.18 немесе жаңарақ** қажет.
 
 ```sh
 cd frontend
 pnpm install
-cp .env.example .env
+```
+
+Немесе npm:
+
+```sh
+cd frontend
+npm install
+```
+
+Backend API мекенжайын баптау үшін `.env.example` файлын `.env` деп көшіріңіз. Windows PowerShell:
+
+```powershell
+Copy-Item .env.example .env
+```
+
+Әдепкі адрес: `VITE_API_BASE_URL=http://localhost:8000`. Интерфейсті іске қосу:
+
+```sh
 pnpm dev
 ```
 
-PowerShell: use `Copy-Item .env.example .env` instead of `cp`.
-Open http://127.0.0.1:5173. Configure `VITE_API_BASE_URL=http://localhost:8000` and restart Vite after changing it. Never put OpenAI or NVIDIA secret keys in VITE variables.
+Немесе `npm run dev`. Браузерден [http://localhost:5173](http://localhost:5173) ашыңыз. API адресін өзгерткен соң Vite серверін қайта іске қосыңыз. OpenAI/NVIDIA құпия кілттерін frontend `.env` не `VITE_` айнымалыларына сақтамаңыз; олар backend жағында болуы керек.
+
+### Жинау және тестілеу
 
 ```sh
-pnpm test
 pnpm build
-pnpm preview
+pnpm test
 ```
 
-## Features
+npm баламасы: `npm run build`, `npm test`.
 
-Kazakh dashboard, 5 districts, 14 measures, per-measure district selection, budget preview, exactly five decisions, at most two per category, duplicate and conflict validation. Reset clears selections and pending results. Requests are cancelled and stale responses discarded when the plan changes.
+### Қазыларға арналған тексеру сценарийі
 
-Simulation metrics, district before/after charts and all indicator changes come from validated backend responses. No simulation formula or optimizer runs in the frontend. Cost summation and selection validation are UX previews; the backend remains authoritative.
+1. [http://localhost:5173](http://localhost:5173) бетін ашыңыз. Backend қосылмаған болса, **«Демо режимі»** белгісі шығады.
+2. **«Демо сценарийді жүктеу»** батырмасымен дайын мысалды толтырыңыз немесе қолмен тура 5 шара таңдаңыз. Бір бағыттан ең көбі 2 шара алуға болады. Аудандық шараға аудан белгілеңіз; қалалық шара бүкіл қалаға арналған.
+3. Бюджет шегін тексеру үшін қосындысы 100-ден асатын бес шараны таңдауға тырысыңыз: артық шығынға жол берілмейді. M1+M3 бірге таңдалмайтынын, ал M4+M7 және M5+M13 бір ауданда үйлеспейтінін тексеріңіз.
+4. **«Симуляцияны іске қосу»** батырмасын басыңыз. Backend қосулы болса, нәтиже серверден алынады. Содан соң **«AI кеңесін алу»** арқылы Policy, Risk, Optimizer және Executive карточкаларын ашыңыз. Executive карточкасы `executive_summary`, `top_strengths`, `main_risks`, `recommended_actions`, `final_comment` өрістерін көрсетеді. Сервер өшірулі болса, тек белгіленген демо сценарийдің статикалық үлгісі көрсетіледі; ол нақты есеп немесе AI жауабы емес.
+5. **«Қайта бастау»** батырмасын басып, таңдаулар мен нәтижелерді бастапқы күйге қайтарыңыз.
 
-Four AI council cards and optimizer comparison retain real numeric results even when AI text is unavailable. Loading, empty catalog, malformed responses, 400/422, 404, 409, 429, 503, network failures and a 30-second timeout are handled.
+### Backend және демо режимі
 
-## Offline demonstration
+Қазіргі `feature/agents-backend` келісімі `/health`, `/bootstrap`, `/districts`, `/measures` endpoint-терін шақырып, `datasetVersion` алады. Сценарий үшін backend `datasetVersion`, `districtId`, `actionIds` қабылдайды; optimizer сұранымына `topN` қосылады. Қазіргі схемада барлық аудандық шараға бір ортақ аудан беріледі. Интерфейс әртүрлі аудандарды үнсіз біріктірмей, бұл шектеуді көрсетеді.
 
-If startup API calls fail, an explicit **Демо режимі** banner explains why. Select **Демо сценарийді жүктеу**, then simulate, request the AI council, and open optimizer comparison. These are static presentation fixtures, not live AI or client-side official calculations. The fixture belongs ONLY to M7/NURA, M8/NURA, M10/NURA, M12/CITY, M5/SARYARKA. Arbitrary plans remain editable and validated but cannot receive this fixture's score. Demo optimization compares the same example with itself and explicitly says no optimization was performed.
+Толық симуляция нәтижесі `/ai/analyze` жауабында болады. `/simulate` ықшам жауабы барлық ауданның бағалары мен көрсеткіштерін қамтымайды, сондықтан frontend жетіспейтін мәндерді есептеп шығармайды. Сервер жүктелгенде қолжетімсіз болса, демо каталог пен дайын үлгі көрсетіледі. Демо деректер нақты есептеу не AI талдауы емес. Нақты интеграция мәліметі [API_CONTRACT_PROPOSAL.md](API_CONTRACT_PROPOSAL.md) файлында.
 
-Use **Backend-ке қайта қосылу** after the server starts. Live action failures display an error instead of silently replacing a real scenario with demo numbers.
+Осы құжаттама жаңартылған кезде backend-тің тірі серверімен тексеру жүргізілмеді. 31 автоматты API/UI логика тесті және браузердегі offline демо ағыны бұрын тексерілген.
 
-## Backend contract
+---
 
-The client now follows backend/API_CONTRACT.md and backend/schemas.py from feature/agents-backend (inspected commit a30f4e10b9fd6dacb6ee58a7c40f0472700e1edc).
+## Русский
 
-Startup: GET /health, /bootstrap, /districts, /measures. Bootstrap supplies the mandatory datasetVersion. The current backend accepts one common district for all district measures. The UI rejects mixed-district live plans with a clear explanation; it never silently changes them.
+### О проекте
 
-POST /ai/analyze and /ai/optimize receive `{datasetVersion,districtId,actionIds}`; optimizer additionally receives `topN:5`. All simulation values are taken from the full `simulation` envelope. The simulation button uses /ai/analyze because the documented /simulate view omits district scores, city average and critical count. This also fills the AI council when available. Without an AI key, analysis:null does not hide the simulation.
+**QALA — «5 часов аким»** — городской симулятор управления Астаной с поддержкой AI. Участник выбирает ровно пять мер M1–M14 по пяти направлениям и распределяет бюджет до **100 условных единиц**. Направления: транспорт, экология, социальная сфера, безопасность и городские сервисы. Модель включает **Есиль, Алматы, Сарыарку, Байконыр и Нуру**. При подключённом backend симуляция и ответы агентов Policy, Risk, Optimizer и Executive поступают с сервера.
 
-The requested earlier /baseline and /optimize routes are not in this backend version and are not called. Until a full result arrives, absent baseline scores display an unavailable state rather than a frontend calculation.
+### Технологии
 
-Policy, Risk, Optimizer and Executive sections match the backend fields. Executive displays executive_summary, top_strengths, main_risks, recommended_actions and final_comment. Optimizer retains numeric engine results when its AI explanation is unavailable.
+- React 19, Vite 8, TypeScript.
+- Zod — проверка структуры API-ответов.
+- Lucide React — иконки интерфейса.
+- Адаптивный CSS. Tailwind CSS в проекте не используется.
 
-See API_CONTRACT_PROPOSAL.md for mapping and limits. A real running backend was unavailable during verification; mocked API contract tests and the offline browser flow passed.
+### Локальный запуск
+
+Требуется Node.js **22.18 или новее**.
+
+```sh
+cd frontend
+pnpm install
+```
+
+Либо npm:
+
+```sh
+cd frontend
+npm install
+```
+
+Чтобы настроить API, скопируйте `.env.example` в `.env`. В Windows PowerShell:
+
+```powershell
+Copy-Item .env.example .env
+```
+
+Адрес по умолчанию: `VITE_API_BASE_URL=http://localhost:8000`.
+
+```sh
+pnpm dev
+```
+
+Либо `npm run dev`. Откройте [http://localhost:5173](http://localhost:5173). После изменения адреса API перезапустите Vite. Секретные ключи OpenAI/NVIDIA нельзя хранить во frontend `.env` или переменных `VITE_`; разместите их на backend.
+
+### Сборка и тесты
+
+```sh
+pnpm build
+pnpm test
+```
+
+Команды npm: `npm run build`, `npm test`.
+
+### Сценарий проверки для жюри
+
+1. Откройте [http://localhost:5173](http://localhost:5173). При отключённом backend появится метка **«Демо режимі»**.
+2. Загрузите пример кнопкой **«Демо сценарийді жүктеу»** или выберите ровно 5 мер вручную. Не более двух мер из одной категории; районным мерам назначьте район, городские относятся ко всему городу.
+3. Проверьте лимит бюджета, выбрав пять доступных мер общей стоимостью свыше 100: превышение блокируется. Проверьте конфликт M1+M3, а также M4+M7 или M5+M13 в одном районе.
+4. Нажмите **«Симуляцияны іске қосу»**. При работающем backend результат придёт с сервера. Затем нажмите **«AI кеңесін алу»** и просмотрите карточки Policy, Risk, Optimizer и Executive. Executive показывает `executive_summary`, `top_strengths`, `main_risks`, `recommended_actions`, `final_comment`. Без backend доступен только статический пример демо-сценария с соответствующей отметкой; это не реальный расчёт или ответ AI.
+5. Нажмите **«Қайта бастау»**, чтобы сбросить выбор и результаты.
+
+### Backend и демо-режим
+
+Текущий контракт `feature/agents-backend` запрашивает `/health`, `/bootstrap`, `/districts`, `/measures` и получает `datasetVersion`. Для сценария backend принимает `datasetVersion`, `districtId`, `actionIds`; запрос optimizer также содержит `topN`. Текущая схема принимает один общий район для районных мер. Интерфейс сообщает об этом ограничении и не подменяет районы молча.
+
+Полный результат симуляции входит в ответ `/ai/analyze`. Краткий ответ `/simulate` не содержит оценок и показателей всех районов, поэтому frontend не дополняет его вымышленными значениями. При недоступности backend используются демо-каталог и готовый пример. Демо — не реальный расчёт или AI-анализ. Подробности интеграции: [API_CONTRACT_PROPOSAL.md](API_CONTRACT_PROPOSAL.md).
+
+При обновлении этой документации работающий backend не проверялся. Ранее прошли 31 автоматический тест API/UI-логики и браузерный offline-сценарий.
