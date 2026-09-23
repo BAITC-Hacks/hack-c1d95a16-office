@@ -18,6 +18,7 @@ from backend.schemas import (
     AnalysisIn,
     AnalysisOut,
     BootstrapOut,
+    OptimizeIn,
     PlanIn,
     SimulationOut,
 )
@@ -314,4 +315,21 @@ def analyze(request: AnalysisIn) -> dict[str, Any]:
     return {
         "scenarioId": request.scenario_id,
         **explanation,
+    }
+
+
+@router.post("/ai/optimize")
+def optimize(request: OptimizeIn) -> dict[str, Any]:
+    """Delegate candidate search to the simulation engine's optimizer."""
+    engine = _simulation_engine()
+    catalog = _catalog(engine)
+    if request.dataset_version != catalog["datasetVersion"]:
+        raise HTTPException(
+            status_code=409,
+            detail="Dataset version changed. Reload /bootstrap and submit again.",
+        )
+    scenarios = engine.find_best_scenarios(top_n=request.top_n)
+    return {
+        "datasetVersion": catalog["datasetVersion"],
+        "scenarios": scenarios,
     }

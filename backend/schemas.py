@@ -81,3 +81,8 @@ class AnalysisOut(APIModel):
     risks: list[str]
     recommendations: list[str]
     source: Literal["live", "mock", "template", "template_fallback"]
+
+
+class OptimizeIn(APIModel):
+    dataset_version: str = Field(alias="datasetVersion")
+    top_n: int = Field(default=5, ge=1, le=10, alias="topN")

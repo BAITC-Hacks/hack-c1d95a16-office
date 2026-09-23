@@ -25,7 +25,8 @@ OpenAPI UI: `http://127.0.0.1:8000/docs`.
 ## API
 
 See [API_CONTRACT.md](API_CONTRACT.md) for routes, JSON shapes, and frontend
-Vite environment values.
+Vite environment values. This includes `/ai/optimize`, a direct adapter to the
+simulation engine's optimizer.
 
 ## Branch integration
 

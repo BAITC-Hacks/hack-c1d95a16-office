@@ -129,6 +129,24 @@ Response:
 `template_fallback`. The frontend's current Zod schema ignores this extra
 field; it may add it if the UI should display the analysis mode.
 
+### `POST /ai/optimize`
+
+Request:
+
+```json
+{"datasetVersion": "sim-<catalog-hash>", "topN": 3}
+```
+
+`topN` is optional (default 5, range 1–10). The route delegates the search
+to `simulation.find_best_scenarios()` and returns its engine-computed ranking:
+
+```json
+{"datasetVersion": "sim-<catalog-hash>", "scenarios": [{"score": 56.5, "total_cost": 95}]}
+```
+
+The example is abbreviated. This endpoint does not recalculate or alter the
+engine's candidate scores.
+
 ### `GET /docs`
 
 FastAPI-generated OpenAPI page for request and response schemas.
