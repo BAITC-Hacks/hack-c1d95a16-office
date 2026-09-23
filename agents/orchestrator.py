@@ -36,14 +36,14 @@ class AIOrchestrator:
             "selected_measures_from_engine": selected_measures,
             "simulation_result": simulation_result,
         }
-        optimizer_facts, scenarios = self.optimizer.optimize(
-            engine, decisions, simulation_result, top_n
-        )
         with ThreadPoolExecutor(max_workers=2) as pool:
             policy_future = pool.submit(self.policy.analyze, facts)
             risk_future = pool.submit(self.risk.analyze, facts)
             policy = policy_future.result()
             risk = risk_future.result()
+        optimizer_facts, scenarios = self.optimizer.optimize(
+            engine, decisions, simulation_result, top_n
+        )
         executive = self.executive.recommend({
             "policy": policy,
             "risk": risk,
