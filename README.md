@@ -1,2 +1,25 @@
-# hack-c1d95a16-office
-Hackathon team repository for Office
+# QALA — «5 сағатқа әкім» (Mayor for 5 Hours)
+AI-симулятор управления развитием города Астана на основе мультиагентной системы.
+
+## О проекте / Жоба туралы
+Интерактивті симулятор қала басқарушысына шектеулі бюджетті (100 млн ₸) Астананың 5 ауданы мен 5 бағыты бойынша бөлуге мүмкіндік береді:
+- Көлік (Транспорт)
+- Көгалдандыру (Озеленение)
+- Әлеуметтік инфрақұрылым (Социальная инфраструктура)
+- Қауіпсіздік (Безопасность)
+- Қалалық сервистер (Городской сервис)
+
+Система рассчитывает итоговый **Astana Quality of Life Score** и генерирует комплексный аудит с помощью специализированных AI-агентов.
+
+## Архитектура и структура репозитория
+- `simulation/` — детерминированный движок симуляции, валидатор бюджета (`validator.py`) и оптимизатор (`optimizer.py`).
+- `agents/` — мультиагентная система AI (`Executive`, `Policy`, `Risk`, `Optimizer`).
+- `backend/` — FastAPI REST API сервис (`/health`, `/bootstrap`, `/simulate`, `/ai/analyze`, `/ai/optimize`).
+- `frontend/` — дашборд на React + Vite + TypeScript с визуализацией метрик и карты.
+
+## Быстрый запуск (Quick Start)
+
+### 1. Backend
+```bash
+python -m pip install -r requirements.txt
+python -m uvicorn backend.main:app --reload --port 8000
