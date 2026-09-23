@@ -3,7 +3,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict
 
 from agents.common import ask_agent
 from agents.prompts import EXECUTIVE_PROMPT
@@ -12,7 +12,7 @@ from agents.prompts import EXECUTIVE_PROMPT
 class ExecutiveRecommendation(BaseModel):
     model_config = ConfigDict(extra="forbid")
     executive_summary: str
-    top_strengths: list[str] = Field(default_factory=list)
+    top_strengths: list[str]
     main_risks: list[str] = Field(default_factory=list)
     recommended_actions: list[str] = Field(default_factory=list)
     final_comment: str
