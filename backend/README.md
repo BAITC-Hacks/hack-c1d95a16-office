@@ -1,36 +1,52 @@
-# Backend
+# Backend + AI agents
 
-FastAPI adapter for the team's simulation engine. The engine owns scenario
-validation, costs, effects, and Score. The backend maps engine data to the
-frontend contract and asks AI only to explain a server-recomputed result.
+FastAPI адаптер соединяет frontend, детерминированный пакет `simulation/` и слой AI. Только simulation engine проверяет сценарии и рассчитывает стоимость, эффекты, Score и оптимальные варианты. AI-агенты получают его результаты и формируют текстовые объяснения.
 
-## Run locally
+## Локальный запуск
 
-From the repository root, with Python 3.10 or newer:
+Из корня репозитория (Python 3.10+):
 
 ```powershell
 py -m venv .venv
 .venv\Scripts\Activate.ps1
 pip install -r requirements.txt
 Copy-Item .env.example .env
+# Добавьте OPENAI_API_KEY в локальный .env; ключ не коммитьте.
 uvicorn backend.main:app --reload
 ```
 
-Set `OPENAI_API_KEY` in the local `.env` only to enable live explanations.
-Without a key, `/ai/analyze` uses the labelled rule-based fallback. The key
-must never be committed or sent to the frontend.
+Без ключа сервер и обычный `/simulate` работают. AI endpoints возвращают deterministic simulation/top scenarios и `aiStatus` с понятной конфигурационной ошибкой; приложение не падает. Провайдер вызывается с таймаутом `OPENAI_TIMEOUT_SECONDS` (по умолчанию 15 секунд) и без автоматических повторов.
 
-OpenAPI UI: `http://127.0.0.1:8000/docs`.
+## Архитектура
 
-## API
+- `backend/routes.py`: входная проверка API, адаптация запросов и вызовы engine.
+- `agents/orchestrator.py`: Policy, Risk, Optimizer и Executive agents.
+- `agents/*_agent.py`: структурированные JSON-результаты; тексты основаны на фактах движка.
+- `agents/prompts.py`: централизованные инструкции для языковой модели.
+- `simulation/`: единственный источник расчетов и поиска оптимума.
+- `OPENAI_API_KEY` хранится только в серверном окружении.
 
-See [API_CONTRACT.md](API_CONTRACT.md) for routes, JSON shapes, and frontend
-Vite environment values. This includes `/ai/optimize`, a direct adapter to the
-simulation engine's optimizer.
+## Примеры API
 
-## Branch integration
+Загрузите актуальный `datasetVersion` через `GET /bootstrap`. Пример тела сценария:
 
-The API and simulation code are still on separate branches:
-`feature/agents-backend` and `feature/simulation`. Until the engine package
-is integrated, `/health` reports it unavailable and engine-dependent routes
-return HTTP 503. No simulation or Score calculation is duplicated in backend.
+```json
+{
+  "datasetVersion": "sim-<из-bootstrap>",
+  "districtId": "NURA",
+  "actionIds": ["M7", "M8", "M10", "M12", "M5"]
+}
+```
+
+- `POST /simulate`: возвращает компактный frontend результат.
+- `POST /ai/analyze`: принимает то же тело; возвращает полный `simulation` и структурированные `analysis.policy`, `risk`, `optimizer`, `executive`.
+- `POST /ai/optimize`: принимает тот же сценарий и необязательный `topN` (1–10); возвращает engine-ranked `scenarios` и объяснение рекомендованного варианта.
+
+Например:
+
+```powershell
+$body = @{ datasetVersion = "sim-<из-bootstrap>"; districtId = "NURA"; actionIds = @("M7","M8","M10","M12","M5") } | ConvertTo-Json
+Invoke-RestMethod http://127.0.0.1:8000/ai/analyze -Method Post -ContentType "application/json" -Body $body
+```
+
+`GET /docs` показывает OpenAPI. Перед запуском backend ветку `feature/simulation` нужно интегрировать в общий репозиторий; backend не содержит копию движка.
