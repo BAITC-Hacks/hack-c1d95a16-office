@@ -3,7 +3,7 @@ from __future__ import annotations
 
 from typing import Any, Literal
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict
 
 from agents.common import ask_agent
 from agents.prompts import RISK_PROMPT
@@ -12,7 +12,7 @@ from agents.prompts import RISK_PROMPT
 class RiskAnalysis(BaseModel):
     model_config = ConfigDict(extra="forbid")
     risk_level: Literal["low", "medium", "high"]
-    risks: list[str] = Field(default_factory=list)
+    risks: list[str]
     critical_findings: list[str] = Field(default_factory=list)
     warnings: list[str] = Field(default_factory=list)
 
