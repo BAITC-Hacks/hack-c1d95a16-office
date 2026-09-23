@@ -1,159 +1,61 @@
-"""Explain engine-computed results without recalculating them."""
+"""Coordinates narrative agents around deterministic simulation results."""
 from __future__ import annotations
 
-import json
-import os
+from concurrent.futures import ThreadPoolExecutor
 from typing import Any
 
-
-class AIServiceError(RuntimeError):
-    """A requested live AI explanation could not be produced."""
-
-
-_INDICATOR_LABELS = {
-    "T1": "жолдардың өткізу қабілеті",
-    "T2": "қоғамдық көлік қолжетімділігі",
-    "E1": "көгалдандыру",
-    "E2": "ауа сапасы",
-    "S1": "мектептер мен балабақшалар",
-    "S2": "алғашқы медициналық көмек",
-    "B1": "көшедегі қауіпсіздік",
-    "B2": "жол қозғалысы қауіпсіздігі",
-    "C1": "коммуналдық желілер сенімділігі",
-    "C2": "тұрғындар өтініштерін өңдеу",
-}
+from agents.common import AIConfigurationError, AIServiceError
+from agents.executive_agent import ExecutiveAgent
+from agents.optimizer_agent import OptimizerAgent
+from agents.policy_agent import PolicyAgent
+from agents.risk_agent import RiskAgent
 
 
-def _analysis_shape(value: Any, source: str) -> dict[str, Any]:
-    if not isinstance(value, dict):
-        raise AIServiceError("AI response had an invalid structure.")
-    summary = value.get("summary")
-    lists = ("strengths", "risks", "recommendations")
-    if not isinstance(summary, str) or not summary.strip():
-        raise AIServiceError("AI response had an invalid structure.")
-    if any(
-        not isinstance(value.get(key), list)
-        or any(not isinstance(item, str) for item in value[key])
-        for key in lists
-    ):
-        raise AIServiceError("AI response had an invalid structure.")
-    return {
-        "summary": f"Тірі AI талдауы: {summary.strip()}" if source == "live" else f"{source}: {summary.strip()}",
-        "strengths": value["strengths"],
-        "risks": value["risks"],
-        "recommendations": value["recommendations"],
-        "source": source,
-    }
+class AIOrchestrator:
+    def __init__(self) -> None:
+        self.policy = PolicyAgent()
+        self.risk = RiskAgent()
+        self.optimizer = OptimizerAgent()
+        self.executive = ExecutiveAgent()
 
-
-def _template_analysis(result: dict[str, Any], source: str) -> dict[str, Any]:
-    delta = float(result["score_delta"])
-    spent = result["total_cost"]
-    remaining = result["remaining_budget"]
-    strengths: list[str] = []
-    for item in result.get("measure_contributions", []):
-        effects = item.get("realized_effects", {})
-        positive = [
-            f"{_INDICATOR_LABELS.get(code, code)} +{float(amount):g}"
-            for code, amount in effects.items()
-            if float(amount) > 0
+    def analyze(
+        self,
+        engine: Any,
+        decisions: list[dict[str, Any]],
+        simulation_result: dict[str, Any],
+        top_n: int = 5,
+    ) -> dict[str, Any]:
+        # Every supplied number is taken from the engine's result/catalog.
+        selected_ids = {item["measure_id"].upper() for item in decisions}
+        selected_measures = [
+            measure for measure in engine.get_measures()
+            if str(measure["id"]).upper() in selected_ids
         ]
-        if positive:
-            strengths.append(f"{item['name']}: " + ", ".join(positive) + ".")
-    for synergy in result.get("synergies_triggered", []):
-        strengths.append(f"Синергия: {synergy['description']}.")
-
-    if not strengths:
-        strengths.append("Сценарий есептеу қозғалтқышынан өтті.")
-
-    weak_name = result["weakest_district"]
-    weak_score = result["districts"][weak_name]["final_score"]
-    risks = [
-        f"Ең әлсіз аудан — {weak_name} (аудандық балл {weak_score:.2f})."
-    ]
-    critical = int(result["critical_count"])
-    if critical:
-        risks.append(f"Қозғалтқыш {critical} критикалық көрсеткішті қалдырды.")
-    else:
-        risks.append("Қозғалтқыш критикалық көрсеткіш қалмағанын хабарлады.")
-
-    recommendations = [
-        f"Келесі сценарийде {weak_name} ауданына арналған шараларды салыстырыңыз."
-    ]
-    if delta < 0:
-        recommendations.append(
-            "Таңдалған жиынтықтың әсерін балама сценариймен салыстырып барып таңдаңыз."
-        )
-    summary = (
-        f"Қалалық Score {result['baseline_score']:.2f}-ден "
-        f"{result['score']:.2f}-ге өзгерді (Δ {delta:+.2f}). "
-        f"Шығын: {spent}, қалған бюджет: {remaining} шартты бірлік."
-    )
-    return {
-        "summary": f"{'Шаблондық түсіндірме' if source == 'template' else 'Резервтік шаблондық түсіндірме'}: {summary}",
-        "strengths": strengths,
-        "risks": risks,
-        "recommendations": recommendations,
-        "source": source,
-    }
-
-
-def _live_analysis(result: dict[str, Any]) -> dict[str, Any]:
-    api_key = os.getenv("OPENAI_API_KEY", "").strip()
-    if not api_key:
-        raise AIServiceError("OPENAI_API_KEY is not configured.")
-
-    try:
-        from openai import OpenAI
-
-        client = OpenAI(api_key=api_key)
-        response = client.responses.create(
-            model=os.getenv("OPENAI_MODEL", "gpt-6-astra"),
-            input=[
-                {
-                    "role": "system",
-                    "content": (
-                        "Сен қалалық сценарийді түсіндіретін сарапшысың. "
-                        "Төмендегі есеп қозғалтқышының нәтижесін ғана түсіндір: "
-                        "Score, құн, шектеу немесе әсерді қайта есептеме және "
-                        "жаңа сан ойлап таппа. Қазақ тілінде жауап бер. "
-                        "JSON объектісін қайтар: summary (string), strengths "
-                        "(string[]), risks (string[]), recommendations (string[])."
-                    ),
-                },
-                {
-                    "role": "user",
-                    "content": json.dumps(result, ensure_ascii=False, separators=(",", ":")),
-                },
-            ],
-            text={"format": {"type": "json_object"}},
-        )
-        parsed = json.loads(response.output_text)
-        return _analysis_shape(parsed, "live")
-    except AIServiceError:
-        raise
-    except Exception as error:
-        raise AIServiceError("Live AI analysis is unavailable.") from error
-
-
-def analyze_result(result: dict[str, Any], mode: str = "auto") -> dict[str, Any]:
-    """Return live, mock, or clearly labelled rule-based analysis."""
-    if mode == "mock":
-        return {
-            "summary": "MOCK: бұл сынақ мәтіні, тірі AI жауабы емес.",
-            "strengths": [],
-            "risks": [],
-            "recommendations": [],
-            "source": "mock",
+        facts = {
+            "selected_decisions": decisions,
+            "selected_measures_from_engine": selected_measures,
+            "simulation_result": simulation_result,
         }
-    if mode == "template":
-        return _template_analysis(result, "template")
-    if mode == "live":
-        return _live_analysis(result)
+        with ThreadPoolExecutor(max_workers=2) as pool:
+            policy_future = pool.submit(self.policy.analyze, facts)
+            risk_future = pool.submit(self.risk.analyze, facts)
+            policy = policy_future.result()
+            risk = risk_future.result()
+        optimizer_facts, scenarios = self.optimizer.optimize(
+            engine, decisions, simulation_result, top_n
+        )
+        executive = self.executive.recommend({
+            "policy": policy,
+            "risk": risk,
+            "optimizer": optimizer_facts,
+        })
+        return {
+            "policy": policy,
+            "risk": risk,
+            "optimizer": optimizer_facts,
+            "executive": executive,
+            "optimized_scenarios": scenarios,
+        }
 
-    if os.getenv("OPENAI_API_KEY", "").strip():
-        try:
-            return _live_analysis(result)
-        except AIServiceError:
-            return _template_analysis(result, "template_fallback")
-    return _template_analysis(result, "template_fallback")
+
+__all__ = ["AIConfigurationError", "AIServiceError", "AIOrchestrator"]
