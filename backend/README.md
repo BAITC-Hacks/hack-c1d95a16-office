@@ -1,34 +1,8 @@
-# Backend — stage 1
+# Backend
 
-FastAPI adapter for the simulation engine. This stage exposes health, canonical
-engine data, and scenario simulation. It does not calculate costs, effects, or
-Score in the backend.
-
-## Endpoints
-
-- `GET /health` — API and engine availability.
-- `GET /districts` — delegates to `simulation.get_districts()`.
-- `GET /measures` — delegates to `simulation.get_measures()`.
-- `POST /simulate` — delegates validation and calculation to
-  `simulation.simulate_scenario()`.
-
-Example request:
-
-```json
-{
-  "decisions": [
-    {"measure_id": "M7", "district": "NURA"},
-    {"measure_id": "M8", "district": "NURA"},
-    {"measure_id": "M10", "district": "NURA"},
-    {"measure_id": "M12"},
-    {"measure_id": "M5", "district": "SARYARKA"}
-  ]
-}
-```
-
-The engine returns its canonical result. Invalid scenarios contain validation
-errors and do not contain a numeric Score. Client-supplied costs and scores are
-rejected by the request schema.
+FastAPI adapter for the team's simulation engine. The engine owns scenario
+validation, costs, effects, and Score. The backend maps engine data to the
+frontend contract and asks AI only to explain a server-recomputed result.
 
 ## Run locally
 
@@ -38,18 +12,24 @@ From the repository root, with Python 3.10 or newer:
 py -m venv .venv
 .venv\Scripts\Activate.ps1
 pip install -r requirements.txt
+Copy-Item .env.example .env
 uvicorn backend.main:app --reload
 ```
 
+Set `OPENAI_API_KEY` in the local `.env` only to enable live explanations.
+Without a key, `/ai/analyze` uses the labelled rule-based fallback. The key
+must never be committed or sent to the frontend.
+
 OpenAPI UI: `http://127.0.0.1:8000/docs`.
 
-## Integration status
+## API
 
-The simulation package currently lives on `feature/simulation`, separately
-from `feature/agents-backend`. The API starts without it, reports a degraded
-health status, and returns HTTP 503 from engine-dependent routes until the
-branches are integrated. No simulation code or Score formula is copied here.
+See [API_CONTRACT.md](API_CONTRACT.md) for routes, JSON shapes, and frontend
+Vite environment values.
 
-The frontend API document is still marked as a proposal. Its payload format
-must be agreed with the team and adapted at the API boundary before wiring the
-frontend to these engine-native routes.
+## Branch integration
+
+The API and simulation code are still on separate branches:
+`feature/agents-backend` and `feature/simulation`. Until the engine package
+is integrated, `/health` reports it unavailable and engine-dependent routes
+return HTTP 503. No simulation or Score calculation is duplicated in backend.

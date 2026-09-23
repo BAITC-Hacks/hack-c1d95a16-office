@@ -1,24 +1,83 @@
-"""HTTP request schemas.
-
-The engine remains the source of truth for scenario rules and all calculations.
-"""
+"""Shared API input and output schemas."""
 from __future__ import annotations
 
-from pydantic import BaseModel, ConfigDict
+from typing import Literal
+
+from pydantic import BaseModel, ConfigDict, Field
 
 
-class DecisionInput(BaseModel):
-    """One engine decision; district is omitted for city-wide measures."""
-
-    model_config = ConfigDict(extra="forbid")
-
-    measure_id: str
-    district: str | None = None
+class APIModel(BaseModel):
+    model_config = ConfigDict(extra="forbid", populate_by_name=True)
 
 
-class ScenarioRequest(BaseModel):
-    """Engine-native scenario input."""
+class MetricOut(APIModel):
+    label: str
+    value: float
+    unit: str
 
-    model_config = ConfigDict(extra="forbid")
 
-    decisions: list[DecisionInput]
+class DistrictOut(APIModel):
+    id: str
+    name: str
+    description: str
+    population: float | None = None
+    metrics: list[MetricOut]
+
+
+class ActionOut(APIModel):
+    id: str
+    category: Literal["transport", "green", "social", "safety", "services"]
+    title: str
+    description: str
+    cost: float
+    district_ids: list[str] | None = Field(default=None, alias="districtIds")
+
+
+class BootstrapOut(APIModel):
+    dataset_version: str = Field(alias="datasetVersion")
+    city_name: str = Field(alias="cityName")
+    budget: float
+    budget_unit: str = Field(alias="budgetUnit")
+    districts: list[DistrictOut]
+    actions: list[ActionOut]
+
+
+class PlanIn(APIModel):
+    """Frontend selection; prices and scores are never accepted from the client."""
+
+    dataset_version: str = Field(alias="datasetVersion")
+    district_id: str = Field(alias="districtId")
+    action_ids: list[str] = Field(alias="actionIds")
+
+
+class MetricChange(APIModel):
+    label: str
+    before: float
+    after: float
+    unit: str
+
+
+class SimulationOut(APIModel):
+    scenario_id: str = Field(alias="scenarioId")
+    dataset_version: str = Field(alias="datasetVersion")
+    spent: float
+    remaining: float
+    baseline_score: float = Field(alias="baselineScore")
+    projected_score: float = Field(alias="projectedScore")
+    metrics: list[MetricChange]
+    assumptions: list[str]
+
+
+class AnalysisIn(APIModel):
+    scenario_id: str = Field(alias="scenarioId")
+    dataset_version: str = Field(alias="datasetVersion")
+    mode: Literal["auto", "live", "mock", "template"] = "auto"
+
+
+class AnalysisOut(APIModel):
+    scenario_id: str = Field(alias="scenarioId")
+    summary: str
+    strengths: list[str]
+    risks: list[str]
+    recommendations: list[str]
+    source: Literal["live", "mock", "template", "template_fallback"]
