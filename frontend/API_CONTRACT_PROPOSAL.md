@@ -1,35 +1,42 @@
-# Seven-endpoint integration contract — pending backend confirmation
+# Backend integration mapping
 
-Inspected backend/API_CONTRACT.md, backend/schemas.py and backend/routes.py at backend commit a30f4e10b9fd6dacb6ee58a7c40f0472700e1edc. They still use `{datasetVersion,districtId,actionIds}`, GET /bootstrap and POST /ai/optimize. /baseline and /optimize are absent; /simulate returns only a single district view. This cannot represent different districts for different measures or the requested five-district result. Frontend does not silently transform multiple districts into one.
+Frontend follows backend/API_CONTRACT.md, backend/schemas.py and agents' Pydantic models, inspected at feature/agents-backend commit a30f4e10b9fd6dacb6ee58a7c40f0472700e1edc. This document replaces the earlier seven-route proposal.
 
-The requested seven-route interface below is implemented in the client and is a PROPOSAL until Member 2 publishes it. Catalog and engine result fields follow the existing simulation engine shapes; council fields follow the existing backend AI response.
+## Request
 
-## Input
+Startup reads /health, /districts, /measures and /bootstrap. The last response supplies datasetVersion and budget=100.
 
-POST /simulate, /optimize and /ai/analyze:
+POST /ai/analyze:
 
 ```json
-{"decisions":[{"measure_id":"M7","district":"NURA"},{"measure_id":"M8","district":"NURA"},{"measure_id":"M10","district":"NURA"},{"measure_id":"M12"},{"measure_id":"M5","district":"SARYARKA"}]}
+{"datasetVersion":"sim-value-from-bootstrap","districtId":"NURA","actionIds":["M7","M8","M10","M12","M5"]}
 ```
 
-No cost, score or effect is sent. City measures omit district. Backend must enforce all official rules.
+POST /ai/optimize uses the same body plus `"topN":5`.
 
-## Responses
+Current PlanIn permits one common district, not a district per action. Live validation rejects mixed district plans explicitly. Demo fixtures use their own explicitly labelled plan. No cost or score is sent from the client.
 
-- GET /health: `{status:"ok",simulation_engine:"available"}`.
-- GET /districts: array `{name: ESIL|ALMATY|SARYARKA|BAIKONUR|NURA, population_share:number, indicators:{T1,T2,E1,E2,S1,S2,B1,B2,C1,C2}}`.
-- GET /measures: array `{id,name,category:TRANSPORT|ECOLOGY|SOCIAL|SAFETY|SERVICES,scope:DISTRICT|CITY,cost,lag,effects:{indicator:number}}`.
-- GET /baseline and POST /simulate: full engine result `{valid:true,total_cost,remaining_budget,score,baseline_score,score_delta,city_average,weakest_district,critical_count,districts:{ESIL:{initial_score,final_score,initial_indicators,final_indicators,indicator_deltas},...all five}}`. Baseline cost=0, remaining=100. All ten indicators and deltas required per district. Partial numbers are not invented.
-- POST /ai/analyze: `{analysis:{policy,risk,optimizer,executive}|null,aiStatus:{status,message?}}`, with existing backend council field names. Missing AI configuration shows an unavailable message; simulation result stays visible.
-- POST /optimize: existing optimizer envelope `{simulation:full_engine_result,scenarios:[{score,total_cost,weakest_district,critical_count,selected_measures:[{measure_id,district?}]}],recommended:{improvement:number},comparison?:{total_cost_delta,critical_count_delta}}`. First scenario is backend-ranked best. Optional differences show “Сервер бермеді” when omitted.
+## Analysis response
 
-Exact executable schemas: src/api/contracts.ts. Errors: non-2xx, or `{valid:false}`. CORS must allow http://127.0.0.1:5173 and http://localhost:5173.
+`{simulation: full_engine_result, analysis: {policy,risk,optimizer,executive} | null, aiStatus:{status,message?}}`.
 
-## Member 2 action items
+- policy: summary, strengths[], tradeoffs[], district_observations[].
+- risk: risk_level (low/medium/high), risks[], critical_findings[], warnings[].
+- optimizer: current_score, recommended_score, improvement, recommended_scenario[{measure_id,district?}], reasoning (string/null).
+- executive: executive_summary, top_strengths[], main_risks[], recommended_actions[], final_comment.
 
-1. Confirm/update the per-decision district request instead of PlanIn's single district.
-2. Expose /baseline, /optimize and full simulation output without reducing to SimulationOut.
-3. Confirm optimizer envelope and that scenarios[0] is recommended.
-4. Send actual OpenAPI/JSON fixtures so contract tests can use server-produced samples.
+All five Executive fields are rendered. React escapes strings; no raw HTML is injected. A null analysis leaves the authoritative simulation visible and shows AI unavailability. Incompatible JSON yields a Kazakh error instead of invented fields.
 
-Until then the UI provides explicitly labelled static demo fixtures. No fabricated response is presented as a live calculation.
+The full engine simulation has valid, total_cost, remaining_budget, score, baseline_score, score_delta, city_average, weakest_district, critical_count, and five districts with initial_score, final_score, initial_indicators, final_indicators, indicator_deltas. All ten indicators are validated. The simulation action calls /ai/analyze directly to obtain this full result; the compact /simulate response is deliberately not expanded using guessed data.
+
+## Optimization response
+
+`{simulation,scenarios:[...],recommended:{improvement,reasoning},aiStatus}`. First engine-ranked scenario supplies score, total_cost, weakest_district, critical_count and selected_measures. Backend improvement is displayed without recalculating Score. Optional comparison.total_cost_delta and critical_count_delta display “Сервер бермеді” if absent. Null reasoning does not remove numeric results.
+
+## Offline and missing fields
+
+Startup failure selects explicit demo mode. Its static example includes all AI sections and Executive fields. It is not a real AI response. The example result is never attached to another arbitrary plan. Frontend contains no official simulation formula.
+
+The backend has no /baseline or /optimize at the inspected revision; earlier seven-route plans are superseded by this concrete integration. Initial scores not supplied by the server remain unavailable until a full calculation is returned.
+
+CORS: allow http://127.0.0.1:5173 and http://localhost:5173. Secret AI keys belong only on the server.

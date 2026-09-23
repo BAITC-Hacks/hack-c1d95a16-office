@@ -84,12 +84,12 @@ export function Dashboard() {
     invalidate(); const current = generation.current;
     const controller = new AbortController(); simulationRequest.current = controller; setSimulating(true);
     try {
-      const next = await simulate({ decisions: selection }, data.mode, controller.signal);
+      const next = await simulate({ decisions: selection, datasetVersion:data.datasetVersion }, data.mode, controller.signal);
       if (current !== generation.current || controller.signal.aborted) return;
       if (next.spent > data.budget || Math.abs(next.spent + next.remaining - data.budget) > 0.000001) {
         throw new Error('Backend қайтарған бюджет бастапқы бюджетпен сәйкес емес.');
       }
-      setResult(next); setNotice(data.mode === 'demo' ? 'Үлгі сценарийдің демо нәтижесі көрсетілді.' : 'Backend есебі дайын.');
+      setResult(next); setAnalysis(next.analysis??null); setNotice(data.mode === 'demo' ? 'Үлгі сценарийдің демо нәтижесі көрсетілді.' : 'Backend есебі дайын.');
     } catch (error) {
       if (current === generation.current && !controller.signal.aborted) setSimulationError(errorMessage(error));
     } finally { if (current === generation.current) setSimulating(false); }
@@ -100,8 +100,8 @@ export function Dashboard() {
     analysisRequest.current?.abort(); const controller = new AbortController(); analysisRequest.current = controller;
     setAnalyzing(true); setAnalysisError(null);
     try {
-      const next = await analyze({ decisions: selection }, data.mode, controller.signal);
-      if (current === generation.current && !controller.signal.aborted) setAnalysis(next);
+      const next = await analyze({ decisions: selection, datasetVersion:data.datasetVersion }, data.mode, controller.signal);
+      if (current === generation.current && !controller.signal.aborted) { setAnalysis(next); if(next.simulation) setResult(next.simulation); }
     } catch (error) {
       if (current === generation.current && !controller.signal.aborted) setAnalysisError(errorMessage(error));
     } finally { if (current === generation.current) setAnalyzing(false); }
@@ -112,7 +112,7 @@ export function Dashboard() {
     const controller = new AbortController(); optimizationRequest.current = controller;
     setOptimizing(true); setOptimizationError(null); setOptimization(null);
     try {
-      const next = await optimize({ decisions: selection }, data.mode, controller.signal);
+      const next = await optimize({ decisions: selection, datasetVersion:data.datasetVersion }, data.mode, controller.signal);
       if (current === generation.current && !controller.signal.aborted) setOptimization(next);
     } catch (error) {
       if (current === generation.current && !controller.signal.aborted) setOptimizationError(errorMessage(error));
@@ -155,12 +155,12 @@ export function Dashboard() {
 
           <div className="workspace-grid">
             <section id="decisions" className="decisions-section"><div className="section-heading"><div><span className="step-label">02 · СЕНІҢ ЖОСПАРЫҢ</span><h2>14 шарадан 5 шешім.</h2></div><span className={`count-badge ${complete ? 'done' : ''}`}>{complete && <Check size={13}/>}<span data-testid="decision-count">{chosen.length}</span> / 5</span></div>
-              <p className="section-description">Тура 5 шара · бір бағыттан ең көбі 2 · қайталауға болмайды. Әр аудандық шараның ауданын жеке таңдаңыз.</p>
+              <p className="section-description">Тура 5 шара · бір бағыттан ең көбі 2 · қайталауға болмайды. {data.datasetVersion?'Қазіргі backend барлық аудандық шараға бір ортақ аудан қабылдайды.':'Әр аудандық шараның ауданын жеке таңдаңыз.'}</p>
               <DecisionSelector key={resetVersion} data={data} selection={selection} expanded={expanded}
                 onExpand={id => setExpanded(expanded === id ? null : id)} onSelect={selectAction} onRemove={removeAction}/>
               <div className="submit-panel"><div className="completion-indicators" aria-label={`${chosen.length} шара таңдалды`}>{categories.map(category => { const Icon = categoryIcons[category.id]; return <span key={category.id} className={chosen.some(a => a.category === category.id) ? 'complete' : ''} title={category.name}><Icon size={15}/></span>; })}<span>{complete ? 'Бес шешім дайын' : `${5 - chosen.length} шара қалды`}</span></div>
                 <button className="primary-button calculate-button" type="button" disabled={!complete || simulating} onClick={calculate}>{simulating ? <LoaderCircle className="spin" size={16}/> : <Sparkles size={16}/>} {simulating ? 'Есептелуде…' : 'Симуляцияны іске қосу'}<ArrowRight size={17}/></button>
-                <p className="service-note">{data.mode === 'demo' ? 'Демо есеп тек дайын үлгі сценарий үшін көрсетіледі. Өз жоспарыңыз үшін backend-ке қосылыңыз.' : 'Есеп POST /simulate арқылы серверде орындалады.'}</p>
+                <p className="service-note">{data.mode === 'demo' ? 'Демо есеп тек дайын үлгі сценарий үшін көрсетіледі. Өз жоспарыңыз үшін backend-ке қосылыңыз.' : 'Толық есеп пен AI кеңесі серверден алынады.'}</p>
                 {simulationError && <p className="inline-error" role="alert">{simulationError}</p>}
               </div>
               <p className="district-change-note">Аудан карточкасы бастапқы көрсеткіштерді ашады. «Қайта бастау» барлық шешімді тазартады.</p>

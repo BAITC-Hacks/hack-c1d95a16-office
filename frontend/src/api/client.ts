@@ -1,5 +1,5 @@
 import {z} from 'zod';
-import {parseAnalysis,parseCityData,parseOptimization,parseSimulation,toWirePlan} from './contracts';
+import {parseAnalysis,parseCityData,parseOptimization} from './contracts';
 import {assertDemoPlan,demoCityData,demoSimulation,demoAnalysis,demoOptimization} from '../data/demo';
 import type {Plan} from '../types';
 
@@ -42,11 +42,31 @@ export async function loadCityData(signal?:AbortSignal){
   const health=await request('/health',undefined,signal);
   const h=z.object({status:z.string(),simulation_engine:z.string().optional()}).safeParse(health);
   if(!h.success||h.data.simulation_engine==='unavailable')throw new Error('Есептеу қозғалтқышы қолжетімсіз. Backend пен simulation интеграциясы қажет.');
-  const [districts,measures,baseline]=await Promise.all(['/districts','/measures','/baseline'].map(path=>request(path,undefined,signal)));
-  return parse(()=>parseCityData(districts,measures,baseline));
+  const [districts,measures,bootstrap]=await Promise.all(['/districts','/measures','/bootstrap'].map(path=>request(path,undefined,signal)));
+  const boot=parse(()=>z.object({datasetVersion:z.string().min(1),budget:z.literal(100)}).parse(bootstrap));
+  return parse(()=>parseCityData(districts,measures,null,boot.datasetVersion));
   } catch(error) { if(signal?.aborted) throw error; return structuredClone({...demoCityData,fallbackReason:error instanceof Error?error.message:'Backend қолжетімсіз.'}); }
 }
-export async function simulate(plan:Plan,mode:'demo'|'backend',signal?:AbortSignal){if(mode==='demo'){assertDemoPlan(plan.decisions);return structuredClone(demoSimulation);}return parseSimulationSafe(await request('/simulate',toWirePlan(plan.decisions),signal));}
-function parseSimulationSafe(raw:unknown){return parse(()=>parseSimulation(raw));}
-export async function analyze(plan:Plan,mode:'demo'|'backend',signal?:AbortSignal){if(mode==='demo'){assertDemoPlan(plan.decisions);return structuredClone(demoAnalysis);}const raw=await request('/ai/analyze',toWirePlan(plan.decisions),signal);return parse(()=>parseAnalysis(raw));}
-export async function optimize(plan:Plan,mode:'demo'|'backend',signal?:AbortSignal){if(mode==='demo'){assertDemoPlan(plan.decisions);return structuredClone(demoOptimization);}const raw=await request('/optimize',toWirePlan(plan.decisions),signal);return parse(()=>parseOptimization(raw));}
+// backend/schemas.py PlanIn: one common district, no client-computed values.
+export function toBackendPlan(plan:Plan){
+  if(!plan.datasetVersion)throw new Error('Каталог нұсқасы жоқ. Backend деректерін қайта жүктеңіз.');
+  const districts=[...new Set(plan.decisions.flatMap(d=>d.districtId?[d.districtId]:[]))];
+  if(districts.length!==1)throw new Error('Қазіргі backend келісімі бір ортақ аудан талап етеді. Аудандық шараларға бір аудан таңдаңыз.');
+  return {datasetVersion:plan.datasetVersion,districtId:districts[0],actionIds:plan.decisions.map(d=>d.actionId)};
+}
+export async function simulate(plan:Plan,mode:'demo'|'backend',signal?:AbortSignal){
+  if(mode==='demo'){assertDemoPlan(plan.decisions);return structuredClone(demoSimulation);}
+  // /simulate's compact view omits district scores and aggregate metrics.
+  // /ai/analyze returns the full authoritative simulation even without an AI key.
+  const analysis=await analyze(plan,mode,signal);
+  if(!analysis.simulation)throw new Error('Backend толық симуляция нәтижесін қайтармады.');
+  return {...analysis.simulation,analysis};
+}
+export async function analyze(plan:Plan,mode:'demo'|'backend',signal?:AbortSignal){
+  if(mode==='demo'){assertDemoPlan(plan.decisions);return structuredClone({...demoAnalysis,simulation:demoSimulation});}
+  const raw=await request('/ai/analyze',toBackendPlan(plan),signal);return parse(()=>parseAnalysis(raw));
+}
+export async function optimize(plan:Plan,mode:'demo'|'backend',signal?:AbortSignal){
+  if(mode==='demo'){assertDemoPlan(plan.decisions);return structuredClone(demoOptimization);}
+  const raw=await request('/ai/optimize',{...toBackendPlan(plan),topN:5},signal);return parse(()=>parseOptimization(raw));
+}

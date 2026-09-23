@@ -36,8 +36,16 @@ If startup API calls fail, an explicit **Демо режимі** banner explains
 
 Use **Backend-ке қайта қосылу** after the server starts. Live action failures display an error instead of silently replacing a real scenario with demo numbers.
 
-## Integration status
+## Backend contract
 
-Requested routes: GET /health, /districts, /measures, /baseline; POST /simulate, /optimize, /ai/analyze. All requests are centralized in `src/api/client.ts`; runtime response validation and mapping in `src/api/contracts.ts`.
+The client now follows backend/API_CONTRACT.md and backend/schemas.py from feature/agents-backend (inspected commit a30f4e10b9fd6dacb6ee58a7c40f0472700e1edc).
 
-The backend branch inspected at commit `a30f4e10b9fd6dacb6ee58a7c40f0472700e1edc` still contains the older single-district contract, no /baseline, and /ai/optimize instead of /optimize. Therefore live seven-route compatibility is pending Member 2's update; it has not been verified against a running server. See API_CONTRACT_PROPOSAL.md for exact expectations. No backend, agent, or simulation files were changed.
+Startup: GET /health, /bootstrap, /districts, /measures. Bootstrap supplies the mandatory datasetVersion. The current backend accepts one common district for all district measures. The UI rejects mixed-district live plans with a clear explanation; it never silently changes them.
+
+POST /ai/analyze and /ai/optimize receive `{datasetVersion,districtId,actionIds}`; optimizer additionally receives `topN:5`. All simulation values are taken from the full `simulation` envelope. The simulation button uses /ai/analyze because the documented /simulate view omits district scores, city average and critical count. This also fills the AI council when available. Without an AI key, analysis:null does not hide the simulation.
+
+The requested earlier /baseline and /optimize routes are not in this backend version and are not called. Until a full result arrives, absent baseline scores display an unavailable state rather than a frontend calculation.
+
+Policy, Risk, Optimizer and Executive sections match the backend fields. Executive displays executive_summary, top_strengths, main_risks, recommended_actions and final_comment. Optimizer retains numeric engine results when its AI explanation is unavailable.
+
+See API_CONTRACT_PROPOSAL.md for mapping and limits. A real running backend was unavailable during verification; mocked API contract tests and the offline browser flow passed.
