@@ -4,6 +4,7 @@ from __future__ import annotations
 from hashlib import sha256
 from importlib import import_module
 import json
+import os
 from types import ModuleType
 from typing import Any
 
@@ -11,7 +12,7 @@ from fastapi import APIRouter, HTTPException
 
 from agents.orchestrator import AIConfigurationError, AIOrchestrator, AIServiceError
 from backend.schemas import ActionOut, BootstrapOut, OptimizePlanIn, PlanIn, SimulationOut
-from backend.simulation_api import ScenarioRequest, simulate_decisions
+from backend.simulation_api import OptimizeScenarioRequest, ScenarioRequest, simulate_decisions
 
 router = APIRouter()
 _ORCHESTRATOR = AIOrchestrator()
@@ -146,6 +147,20 @@ def _run_engine(engine: ModuleType, request: PlanIn) -> tuple[list[dict[str, Any
     return decisions, district_id, result, _catalog(engine)["datasetVersion"]
 
 
+def _run_any_engine(
+    engine: ModuleType, request: PlanIn | ScenarioRequest,
+) -> tuple[list[dict[str, Any]], dict[str, Any], str]:
+    """Run either transport contract through the same deterministic engine."""
+    if isinstance(request, ScenarioRequest):
+        payload = request.engine_input()
+        result = engine.simulate_scenario(payload)
+        if not result.get("valid"):
+            raise HTTPException(status_code=422, detail=result)
+        return payload["decisions"], result, _catalog(engine)["datasetVersion"]
+    decisions, _, result, version = _run_engine(engine, request)
+    return decisions, result, version
+
+
 def _ai_status(error: Exception) -> dict[str, str]:
     if isinstance(error, AIConfigurationError):
         return {"status": "configuration_error", "code": "OPENAI_API_KEY_MISSING", "message": str(error)}
@@ -200,9 +215,19 @@ def simulate(request: PlanIn | ScenarioRequest) -> dict[str, Any]:
 
 
 @router.post("/ai/analyze")
-def analyze(request: PlanIn) -> dict[str, Any]:
+def analyze(request: PlanIn | ScenarioRequest) -> dict[str, Any]:
     engine = _simulation_engine()
-    decisions, _, result, version = _run_engine(engine, request)
+    decisions, result, version = _run_any_engine(engine, request)
+    if not os.getenv("OPENAI_API_KEY", "").strip():
+        return {
+            "datasetVersion": version,
+            "simulation": result,
+            "analysis": None,
+            "optimizedScenarios": [],
+            "aiStatus": _ai_status(AIConfigurationError(
+                "AI не настроен: задайте OPENAI_API_KEY в локальном .env и перезапустите backend."
+            )),
+        }
     try:
         analysis = _ORCHESTRATOR.analyze(engine, decisions, result)
         return {
@@ -223,9 +248,9 @@ def analyze(request: PlanIn) -> dict[str, Any]:
 
 
 @router.post("/ai/optimize")
-def optimize(request: OptimizePlanIn) -> dict[str, Any]:
+def optimize(request: OptimizePlanIn | OptimizeScenarioRequest) -> dict[str, Any]:
     engine = _simulation_engine()
-    decisions, _, current, version = _run_engine(engine, request)
+    decisions, current, version = _run_any_engine(engine, request)
     candidates = engine.find_best_scenarios(top_n=request.top_n)
     if not candidates:
         raise HTTPException(status_code=502, detail="Simulation optimizer returned no scenarios.")

@@ -4,7 +4,6 @@ export const totalCost=(selection:Selection,actions:Action[])=>selectedActions(s
 export function validateSelection(selection:Selection,data:CityData,final=false):string[]{
   const errors:string[]=[];
   if(selection.length>5||(final&&selection.length!==5)) errors.push('Тура 5 шешім таңдалуы керек.');
-  if(data.datasetVersion&&new Set(selection.filter(d=>d.districtId).map(d=>d.districtId)).size>1) errors.push('Қазіргі backend келісімі барлық аудандық шара үшін бір ортақ аудан қабылдайды. Бір аудан таңдаңыз.');
   const ids=selection.map(d=>d.actionId);
   if(new Set(ids).size!==ids.length) errors.push('Әр шараны тек бір рет таңдауға болады.');
   const counts:Record<string,number>={};

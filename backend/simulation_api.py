@@ -45,6 +45,10 @@ class OptimizeRequest(TransportModel):
     top_n: int = Field(default=5, ge=1, le=10, strict=True, alias="topN")
 
 
+class OptimizeScenarioRequest(ScenarioRequest):
+    top_n: int = Field(default=5, ge=1, le=10, strict=True, alias="topN")
+
+
 class CompareRequest(TransportModel):
     scenario_a: ScenarioRequest = Field(alias="scenarioA")
     scenario_b: ScenarioRequest = Field(alias="scenarioB")

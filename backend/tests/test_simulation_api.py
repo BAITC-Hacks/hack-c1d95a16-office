@@ -1,7 +1,6 @@
 """HTTP contract checks with real deterministic engine outputs and no LLM calls."""
 
 import json
-
 import pytest
 from fastapi.testclient import TestClient
 
@@ -58,6 +57,53 @@ def test_health_and_required_routes(client):
         ("post", "/optimize"), ("post", "/compare"),
     ]:
         assert method in paths[path]
+    assert "post" in paths["/ai/analyze"]
+    assert "post" in paths["/ai/optimize"]
+
+
+def test_reference_scenario_uses_real_engine(client):
+    scenario = {"decisions": [
+        {"measure_id": "M2", "district": None},
+        {"measure_id": "M3", "district": "NURA"},
+        {"measure_id": "M8", "district": "NURA"},
+        {"measure_id": "M9", "district": "NURA"},
+        {"measure_id": "M14", "district": None},
+    ]}
+    response = client.post("/simulate", json=scenario)
+    assert response.status_code == 200
+    assert response.json()["total_cost"] == 98
+    assert response.json()["score"] == pytest.approx(57.2367, abs=0.0001)
+
+
+def test_ai_analyze_runs_simulation_before_missing_key_fallback(client, scenario, monkeypatch):
+    monkeypatch.delenv("OPENAI_API_KEY", raising=False)
+    response = client.post("/ai/analyze", json=scenario)
+    assert response.status_code == 200
+    body = response.json()
+    assert body["simulation"] == simulation.simulate_scenario(scenario)
+    assert body["analysis"] is None
+    assert body["aiStatus"]["status"] == "configuration_error"
+
+
+def test_ai_optimize_uses_only_engine_numbers_on_missing_key(client, scenario, monkeypatch):
+    monkeypatch.delenv("OPENAI_API_KEY", raising=False)
+    current = simulation.simulate_scenario(scenario)
+    candidate = {
+        "selected_measures": current["decisions"], "score": current["score"],
+        "total_cost": current["total_cost"], "weakest_district": current["weakest_district"],
+        "critical_count": current["critical_count"],
+    }
+    monkeypatch.setattr(simulation, "find_best_scenarios", lambda top_n: [candidate])
+    response = client.post("/ai/optimize", json={**scenario, "topN": 1})
+    assert response.status_code == 200
+    body = response.json()
+    assert body["simulation"] == current
+    assert body["scenarios"] == [candidate]
+    assert body["recommended"]["current_score"] == current["score"]
+    assert body["recommended"]["recommended_score"] == candidate["score"]
+    assert body["recommended"]["improvement"] == 0
+    assert body["recommended"]["reasoning"] is None
+    assert body["aiStatus"]["status"] == "configuration_error"
 
 
 @pytest.mark.parametrize("camel_case", [False, True])
