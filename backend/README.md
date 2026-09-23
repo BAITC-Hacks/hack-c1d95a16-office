@@ -6,7 +6,7 @@ frontend contract and asks AI only to explain a server-recomputed result.
 
 ## Run locally
 
-From the repository root, with Python 3.10 or newer:
+From the repository root, with Python 3.11 or newer:
 
 ```powershell
 py -m venv .venv
@@ -25,12 +25,17 @@ OpenAPI UI: `http://127.0.0.1:8000/docs`.
 ## API
 
 See [API_CONTRACT.md](API_CONTRACT.md) for routes, JSON shapes, and frontend
-Vite environment values. This includes `/ai/optimize`, a direct adapter to the
-simulation engine's optimizer.
+Vite environment values. The deterministic interface also exposes `/baseline`,
+`/optimize`, `/compare`, and explicit per-decision `/simulate` requests.
 
 ## Branch integration
 
-The API and simulation code are still on separate branches:
-`feature/agents-backend` and `feature/simulation`. Until the engine package
-is integrated, `/health` reports it unavailable and engine-dependent routes
-return HTTP 503. No simulation or Score calculation is duplicated in backend.
+This branch includes the simulation package and an earlier backend merge.
+See [INTEGRATION_REVIEW.md](INTEGRATION_REVIEW.md) before merging the newer
+`feature/agents-backend` AI work. Numerical logic remains in `simulation/`.
+
+## Tests
+
+Install `requirements-dev.txt` and run `python -m pytest -q` from the repository
+root. HTTP adapter tests run without AI calls. The existing optimizer tests
+perform the exhaustive search, so the full suite may take about 90 seconds.

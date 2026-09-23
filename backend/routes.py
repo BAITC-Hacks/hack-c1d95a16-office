@@ -13,6 +13,7 @@ from uuid import uuid4
 from fastapi import APIRouter, HTTPException
 
 from agents.orchestrator import AIServiceError, analyze_result
+from backend.simulation_api import ScenarioRequest, simulate_decisions
 from backend.schemas import (
     ActionOut,
     AnalysisIn,
@@ -226,9 +227,11 @@ def measures() -> list[dict[str, Any]]:
     return _simulation_engine().get_measures()
 
 
-@router.post("/simulate", response_model=SimulationOut)
-def simulate(request: PlanIn) -> dict[str, Any]:
+@router.post("/simulate", response_model=SimulationOut | dict[str, Any])
+def simulate(request: PlanIn | ScenarioRequest) -> dict[str, Any]:
     """Map frontend IDs to engine decisions; let the engine validate and score."""
+    if isinstance(request, ScenarioRequest):
+        return simulate_decisions(request)
     engine = _simulation_engine()
     catalog = _catalog(engine)
     if request.dataset_version != catalog["datasetVersion"]:

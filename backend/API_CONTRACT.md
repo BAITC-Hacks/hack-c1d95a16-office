@@ -1,6 +1,7 @@
 # Backend API contract
 
-**Implemented on `feature/agents-backend`; use this contract when wiring the frontend.**
+**Integrated on `feature/simulation`, retaining the existing frontend contract.**
+See `INTEGRATION_REVIEW.md` for differences from the newer remote backend branch.
 All data and scores come from the simulation engine. The browser never submits a
 cost or Score. The engine branch must be integrated with this backend branch
 before simulation-dependent routes return data.
@@ -47,7 +48,7 @@ Returns frontend-ready synthetic data:
       "id": "M7",
       "category": "social",
       "title": "Modular school + kindergarten",
-      "description": "Бір ауданға; лагы 3 тоқсан; әсері: Мектептер мен балабақшалар +14.",
+      "description": "Бір ауданға; лагы 3 тоқсан; толық каталог әсері: Мектептер мен балабақшалар +16.",
       "cost": 24,
       "districtIds": ["ESIL", "ALMATY", "SARYARKA", "BAIKONUR", "NURA"]
     }
@@ -150,3 +151,54 @@ engine's candidate scores.
 ### `GET /docs`
 
 FastAPI-generated OpenAPI page for request and response schemas.
+
+## Additional deterministic interface
+
+These endpoints require no AI key and obtain every numerical result directly
+from `simulation/`. Pydantic inputs become ordinary dictionaries before entering
+the engine. Unknown request fields (including costs or scores) return HTTP 422.
+
+### `GET /baseline`
+
+Returns the complete `calculate_baseline()` result.
+
+### `POST /simulate` with per-decision district assignments
+
+The legacy request and compact response above remain supported. Alternatively:
+
+```json
+{"decisions": [
+  {"measure_id": "M7", "district": "NURA"},
+  {"measure_id": "M8", "district": "NURA"},
+  {"measure_id": "M10", "district": "NURA"},
+  {"measure_id": "M12", "district": null},
+  {"measure_id": "M5", "district": "SARYARKA"}
+]}
+```
+
+`measureId` is an alias for `measure_id`. City decisions omit district or use
+null, never the literal string `CITY`. Returns the complete `simulate_scenario()`
+result, including all district details and contributions. No fields are rounded
+or discarded. This form uses the current engine dataset and does not accept
+`datasetVersion` or create a stored AI scenario ID. Do not mix request forms;
+existing AI routes retain their own contracts.
+
+### `POST /optimize`
+
+Send `{"top_n": 5}` (alias `topN`), or `{}` for the default 5. The bound is an
+integer from 1 to 10. Returns `{"scenarios": [...]}` containing the unmodified
+`find_best_scenarios()` ranking. Submit a candidate's `selected_measures` as
+`decisions` to simulate it. This is separate from `/ai/optimize` and needs no
+dataset version. Exhaustive search is synchronous; allow roughly 90 seconds
+on the development machine.
+
+### `POST /compare`
+
+Send `{"scenario_a": {"decisions": [...]}, "scenario_b": {"decisions": [...]}}`.
+Aliases `scenarioA` and `scenarioB` are accepted. Returns the full engine
+comparison; differences are **B minus A**.
+
+For explicit `/simulate` and `/compare`, an invalid scenario yields HTTP 422
+with the complete engine failure under `detail`, including all errors and no
+score. JSON type errors use the standard FastAPI validation response. Missing
+simulation packages yield HTTP 503 on the deterministic routes.
