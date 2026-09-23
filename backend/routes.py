@@ -11,6 +11,7 @@ from fastapi import APIRouter, HTTPException
 
 from agents.orchestrator import AIConfigurationError, AIOrchestrator, AIServiceError
 from backend.schemas import ActionOut, BootstrapOut, OptimizePlanIn, PlanIn, SimulationOut
+from backend.simulation_api import ScenarioRequest, simulate_decisions
 
 router = APIRouter()
 _ORCHESTRATOR = AIOrchestrator()
@@ -175,8 +176,10 @@ def measures() -> list[dict[str, Any]]:
     return _simulation_engine().get_measures()
 
 
-@router.post("/simulate", response_model=SimulationOut)
-def simulate(request: PlanIn) -> dict[str, Any]:
+@router.post("/simulate", response_model=SimulationOut | dict[str, Any])
+def simulate(request: PlanIn | ScenarioRequest) -> dict[str, Any]:
+    if isinstance(request, ScenarioRequest):
+        return simulate_decisions(request)
     engine = _simulation_engine()
     _, district_id, result, version = _run_engine(engine, request)
     selected = result["districts"][district_id]

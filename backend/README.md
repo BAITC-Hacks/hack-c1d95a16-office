@@ -1,52 +1,42 @@
 # Backend + AI agents
 
-FastAPI адаптер соединяет frontend, детерминированный пакет `simulation/` и слой AI. Только simulation engine проверяет сценарии и рассчитывает стоимость, эффекты, Score и оптимальные варианты. AI-агенты получают его результаты и формируют текстовые объяснения.
+FastAPI адаптер соединяет frontend, deterministic simulation engine и AI-объяснения. Движок — единственный источник чисел: он проверяет сценарии, рассчитывает стоимость, эффекты и Score, а также ищет оптимальные варианты. AI объясняет готовые результаты и не выполняет вычислений.
 
 ## Локальный запуск
 
-Из корня репозитория (Python 3.10+):
+Из корня репозитория, Python 3.11+:
 
 ```powershell
 py -m venv .venv
 .venv\Scripts\Activate.ps1
 pip install -r requirements.txt
+pip install -r requirements-dev.txt
 Copy-Item .env.example .env
-# Добавьте OPENAI_API_KEY в локальный .env; ключ не коммитьте.
+# Добавьте OPENAI_API_KEY в локальный .env; не коммитьте его.
 uvicorn backend.main:app --reload
 ```
 
-Без ключа сервер и обычный `/simulate` работают. AI endpoints возвращают deterministic simulation/top scenarios и `aiStatus` с понятной конфигурационной ошибкой; приложение не падает. Провайдер вызывается с таймаутом `OPENAI_TIMEOUT_SECONDS` (по умолчанию 15 секунд) и без автоматических повторов.
+Без ключа API запускается, а AI-маршруты возвращают результат движка вместе с `aiStatus` и сообщением о конфигурации. OpenAI вызывается с таймаутом `OPENAI_TIMEOUT_SECONDS` (по умолчанию 15 секунд), без автоматических повторов. Ключ нужен только серверу.
 
 ## Архитектура
 
-- `backend/routes.py`: входная проверка API, адаптация запросов и вызовы engine.
-- `agents/orchestrator.py`: Policy, Risk, Optimizer и Executive agents.
-- `agents/*_agent.py`: структурированные JSON-результаты; тексты основаны на фактах движка.
-- `agents/prompts.py`: централизованные инструкции для языковой модели.
-- `simulation/`: единственный источник расчетов и поиска оптимума.
-- `OPENAI_API_KEY` хранится только в серверном окружении.
+- `backend/routes.py`: frontend API и AI маршруты.
+- `backend/simulation_api.py`: JSON API-адаптер для полного сценария, baseline, engine optimizer и сравнения.
+- `agents/orchestrator.py`: координирует Policy, Risk, Optimizer и Executive.
+- `agents/*_agent.py`: структурированные объяснения на основе данных движка.
+- `agents/prompts.py`: общие system prompts.
+- `simulation/`: правила, все расчёты и deterministic optimizer.
 
-## Примеры API
+## Основные маршруты
 
-Загрузите актуальный `datasetVersion` через `GET /bootstrap`. Пример тела сценария:
+- `GET /health`, `GET /bootstrap`, `GET /districts`, `GET /measures`
+- `POST /simulate`: frontend-сценарий или полный список per-measure решений
+- `POST /ai/analyze`: симуляция и структурированный анализ четырёх агентов
+- `POST /ai/optimize`: текущая симуляция, лучшие варианты движка и AI-объяснение
+- `GET /baseline`, `POST /optimize`, `POST /compare`: deterministic API без AI
 
-```json
-{
-  "datasetVersion": "sim-<из-bootstrap>",
-  "districtId": "NURA",
-  "actionIds": ["M7", "M8", "M10", "M12", "M5"]
-}
-```
+Актуальные JSON-примеры и поля ответов находятся в [API_CONTRACT.md](API_CONTRACT.md). OpenAPI UI: `http://127.0.0.1:8000/docs`.
 
-- `POST /simulate`: возвращает компактный frontend результат.
-- `POST /ai/analyze`: принимает то же тело; возвращает полный `simulation` и структурированные `analysis.policy`, `risk`, `optimizer`, `executive`.
-- `POST /ai/optimize`: принимает тот же сценарий и необязательный `topN` (1–10); возвращает engine-ranked `scenarios` и объяснение рекомендованного варианта.
+## Проверка
 
-Например:
-
-```powershell
-$body = @{ datasetVersion = "sim-<из-bootstrap>"; districtId = "NURA"; actionIds = @("M7","M8","M10","M12","M5") } | ConvertTo-Json
-Invoke-RestMethod http://127.0.0.1:8000/ai/analyze -Method Post -ContentType "application/json" -Body $body
-```
-
-`GET /docs` показывает OpenAPI. Перед запуском backend ветку `feature/simulation` нужно интегрировать в общий репозиторий; backend не содержит копию движка.
+Из корня репозитория запустите `python -m pytest -q`. HTTP и simulation тесты не требуют OpenAI-вызовов; полный optimizer тест может занять около 90 секунд.

@@ -10,6 +10,7 @@ from fastapi.middleware.cors import CORSMiddleware
 load_dotenv()
 
 from backend.routes import router  # noqa: E402
+from backend.simulation_api import router as simulation_router  # noqa: E402
 
 app = FastAPI(
     title="Аким на 5 часов API",
@@ -33,3 +34,4 @@ app.add_middleware(
 )
 
 app.include_router(router)
+app.include_router(simulation_router)

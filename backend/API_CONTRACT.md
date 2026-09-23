@@ -1,24 +1,23 @@
 # Backend API contract
 
-На `feature/agents-backend`. Все числовые поля, валидация и поиск оптимума приходят из `simulation/`; backend и LLM не повторяют расчеты.
+Все расчёты, проверки сценариев и поиск оптимума принадлежат `simulation/`. Backend передаёт данные движку, AI-агенты объясняют его выводы. Клиент не отправляет cost или Score.
 
-## Запуск и адрес
+## Локальный адрес
 
-- Base URL: `http://127.0.0.1:8000`; демо без авторизации.
-- CORS по умолчанию: `http://127.0.0.1:5173` и `http://localhost:5173`.
-- Получите актуальную версию каталога через `GET /bootstrap`.
+- Base URL: `http://127.0.0.1:8000`; для демо авторизация не включена.
+- CORS по умолчанию: `http://127.0.0.1:5173`, `http://localhost:5173`.
+- Сначала запросите `GET /bootstrap`, чтобы получить актуальный `datasetVersion`.
 
-## Общие endpoint
+## Общие маршруты
 
-- `GET /health`: состояние API и доступность engine.
-- `GET /bootstrap`: данные для frontend из engine.
-- `GET /districts`, `GET /measures`: исходный каталог engine.
-- `POST /simulate`: принимает сценарный запрос ниже и возвращает компактный frontend view.
-- `GET /docs`: OpenAPI.
+- `GET /health`: статус API и наличие simulation engine.
+- `GET /bootstrap`: каталоги в формате frontend.
+- `GET /districts`, `GET /measures`: исходные каталоги движка.
+- `GET /docs`: интерактивная OpenAPI документация.
 
-### Тело сценария
+### Сценарий для frontend и AI
 
-Такое же тело отправляется в `/simulate`, `/ai/analyze` и `/ai/optimize`:
+Тело для `POST /simulate`, `POST /ai/analyze` и `POST /ai/optimize`:
 
 ```json
 {
@@ -28,11 +27,27 @@
 }
 ```
 
-Backend переводит выбранные ID в формат engine. Стоимость и Score клиентом не принимаются. Невалидный набор возвращает HTTP 422 без числового результата.
+Все районные меры применяются к выбранному району, городские передаются без района. Движок проверяет сценарий. При ошибке API отвечает HTTP 422 и не возвращает Score.
+
+### `POST /simulate`: явные назначения
+
+Можно передать per-measure решения вместо frontend тела:
+
+```json
+{"decisions": [
+  {"measure_id": "M7", "district": "NURA"},
+  {"measure_id": "M8", "district": "NURA"},
+  {"measure_id": "M10", "district": "NURA"},
+  {"measure_id": "M12"},
+  {"measure_id": "M5", "district": "SARYARKA"}
+]}
+```
+
+`measureId` тоже принимается вместо `measure_id`. Ответ — полный результат движка с районными показателями, эффектами и Score. Для городских мер опустите `district` или укажите `null`. Стоимость/Score во входе запрещены. Этот формат доступен только в `/simulate`; AI endpoints принимают frontend тело выше.
 
 ### `POST /ai/analyze`
 
-Выполняет: scenario → `simulation.simulate_scenario` → Policy + Risk + Optimizer → Executive. Ответ содержит исходный полный результат движка и четыре структурированных объекта анализа:
+Принимает frontend-сценарий выше. Порядок: engine simulation → Policy и Risk → Optimizer → Executive. Ответ содержит полный результат движка, структурированные AI-выводы и оптимизированные варианты:
 
 ```json
 {
@@ -49,12 +64,35 @@ Backend переводит выбранные ID в формат engine. Сто�
 }
 ```
 
-Числа выше иллюстративны. Без `OPENAI_API_KEY` сервер возвращает `analysis: null`, но сохраняет расчет engine и `aiStatus.status=configuration_error` с сообщением и именем требуемой переменной. При отказе AI детерминированные результаты также сохраняются.
+Числа в примере условные. Если нет `OPENAI_API_KEY`, расчёт движка возвращается, `analysis` становится `null`, а `aiStatus` содержит `configuration_error` с инструкцией настроить ключ. При временной ошибке AI детерминированный результат также сохраняется.
 
 ### `POST /ai/optimize`
 
-Тело — сценарный запрос плюс необязательный `topN` (целое число 1–10, default 5). Кандидатов вычисляет только `simulation.find_best_scenarios()`; сравнение — только `simulation.compare_scenarios()`.
+Принимает frontend тело сценария и необязательный `topN` от 1 до 10 (по умолчанию 5). Candidate ranking приходит из `simulation.find_best_scenarios()`, сравнение — из `simulation.compare_scenarios()`. Ответ включает текущий результат, список engine-кандидатов, значения Score/improvement от движка и AI-пояснение. Без API-ключа детерминированные данные доступны, `reasoning=null`, `aiStatus` сообщает об ошибке настройки.
 
-Ответ содержит `simulation` текущего сценария, engine-ranked `scenarios` и `recommended` с текущим Score, рекомендуемым Score, улучшением от engine, выбранными решениями и AI-пояснением. При отсутствии ключа `reasoning=null`, `aiStatus` сообщает настройку; engine-результаты остаются доступны.
+## Deterministic engine API
 
-Секреты помещаются только в локальный `.env`, который не коммитится. Скопируйте `.env.example` и задайте `OPENAI_API_KEY`. Таймаут AI по умолчанию 15 секунд.
+Эти маршруты не используют OpenAI и возвращают оригинальные результаты движка.
+
+### `GET /baseline`
+
+Возвращает результат `simulation.calculate_baseline()`.
+
+### `POST /optimize`
+
+Тело: `{}` или `{"top_n": 5}` (также принимается `topN`; допустимо 1–10). Возвращает `{"scenarios": [...]}` без изменения ранжирования `simulation.find_best_scenarios()`. Сценарий из `selected_measures` можно отправить в явную форму `/simulate`. Перебор синхронный и может занять до примерно 90 секунд на машине разработки.
+
+### `POST /compare`
+
+```json
+{
+  "scenario_a": {"decisions": [{"measure_id": "M7", "district": "NURA"}]},
+  "scenario_b": {"decisions": [{"measure_id": "M7", "district": "ESIL"}]}
+}
+```
+
+Также принимаются алиасы `scenarioA` / `scenarioB`. Возвращает результат `simulation.compare_scenarios()`; разницы — B минус A. Невалидный сценарий возвращает HTTP 422 с полным сообщением движка и без Score.
+
+## Секреты и настройки
+
+Создайте локальный `.env` по образцу `.env.example` и задайте `OPENAI_API_KEY`. Файл `.env` и все варианты `.env.*`, кроме отслеживаемого `.env.example`, исключены из Git. Никогда не передавайте API-ключ frontend или GitHub.
