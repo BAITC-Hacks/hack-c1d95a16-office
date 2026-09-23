@@ -3,7 +3,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict
 
 from agents.common import ask_agent
 from agents.prompts import POLICY_PROMPT
@@ -12,7 +12,7 @@ from agents.prompts import POLICY_PROMPT
 class PolicyAnalysis(BaseModel):
     model_config = ConfigDict(extra="forbid")
     summary: str
-    strengths: list[str] = Field(default_factory=list)
+    strengths: list[str]
     tradeoffs: list[str] = Field(default_factory=list)
     district_observations: list[str] = Field(default_factory=list)
 
