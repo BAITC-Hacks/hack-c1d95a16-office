@@ -1,152 +1,60 @@
 # Backend API contract
 
-**Implemented on `feature/agents-backend`; use this contract when wiring the frontend.**
-All data and scores come from the simulation engine. The browser never submits a
-cost or Score. The engine branch must be integrated with this backend branch
-before simulation-dependent routes return data.
+На `feature/agents-backend`. Все числовые поля, валидация и поиск оптимума приходят из `simulation/`; backend и LLM не повторяют расчеты.
 
-## Local setup
+## Запуск и адрес
 
-- Base URL: `http://127.0.0.1:8000`
-- No authentication for the hackathon demo.
-- Synchronous JSON requests.
-- CORS: `http://127.0.0.1:5173` and `http://localhost:5173`.
-- Frontend Vite paths:
-  - `VITE_BOOTSTRAP_PATH=bootstrap`
-  - `VITE_SIMULATE_PATH=simulate`
-  - `VITE_ANALYZE_PATH=ai/analyze`
+- Base URL: `http://127.0.0.1:8000`; демо без авторизации.
+- CORS по умолчанию: `http://127.0.0.1:5173` и `http://localhost:5173`.
+- Получите актуальную версию каталога через `GET /bootstrap`.
 
-## Endpoints
+## Общие endpoint
 
-### `GET /health`
+- `GET /health`: состояние API и доступность engine.
+- `GET /bootstrap`: данные для frontend из engine.
+- `GET /districts`, `GET /measures`: исходный каталог engine.
+- `POST /simulate`: принимает сценарный запрос ниже и возвращает компактный frontend view.
+- `GET /docs`: OpenAPI.
 
-Returns `{"status":"ok","simulation_engine":"available"}` when the engine is
-integrated. Until then, `simulation_engine` is `"unavailable"`; engine-backed
-routes return HTTP 503.
+### Тело сценария
 
-### `GET /bootstrap`
-
-Returns frontend-ready synthetic data:
+Такое же тело отправляется в `/simulate`, `/ai/analyze` и `/ai/optimize`:
 
 ```json
 {
-  "datasetVersion": "sim-<catalog-hash>",
-  "cityName": "Астана — синтетическая модель",
-  "budget": 100,
-  "budgetUnit": "шартты бірлік",
-  "districts": [
-    {
-      "id": "ESIL",
-      "name": "Есіл",
-      "description": "Жобаның синтетикалық моделіндегі аудан.",
-      "metrics": [{"label": "Көгалдандыру", "value": 68, "unit": "/100"}]
-    }
-  ],
-  "actions": [
-    {
-      "id": "M7",
-      "category": "social",
-      "title": "Modular school + kindergarten",
-      "description": "Бір ауданға; лагы 3 тоқсан; әсері: Мектептер мен балабақшалар +14.",
-      "cost": 24,
-      "districtIds": ["ESIL", "ALMATY", "SARYARKA", "BAIKONUR", "NURA"]
-    }
-  ]
-}
-```
-
-The sample abbreviates the arrays. `datasetVersion` is a stable hash of the
-engine's canonical districts, actions, budget, and baseline Score; it changes
-when the data or baseline calculation changes. Population counts are omitted because the engine only supplies shares.
-
-### `GET /districts` and `GET /measures`
-
-Return the engine's canonical lists without the frontend display adapter.
-
-### `POST /simulate`
-
-Request:
-
-```json
-{
-  "datasetVersion": "sim-<catalog-hash>",
+  "datasetVersion": "sim-<значение из /bootstrap>",
   "districtId": "NURA",
   "actionIds": ["M7", "M8", "M10", "M12", "M5"]
 }
 ```
 
-All selected district-scoped measures apply to `districtId`; city-scoped
-measures are passed to the engine without a district. The engine checks the
-number of decisions, budget, categories, scope, duplicates, and incompatibility
-rules. A failed scenario returns HTTP 422 with engine errors and no Score.
-
-Successful response:
-
-```json
-{
-  "scenarioId": "<opaque-id>",
-  "datasetVersion": "sim-<catalog-hash>",
-  "spent": 95,
-  "remaining": 5,
-  "baselineScore": 52.56,
-  "projectedScore": 56.54,
-  "metrics": [{"label": "Ауа сапасы", "before": 65, "after": 65, "unit": "/100"}],
-  "assumptions": ["Деректер — синтетикалық модель; бұл нақты қалалық болжам емес."]
-}
-```
-
-Values above are illustrative; the engine supplies the actual scores and
-metrics. A successful scenario is retained in bounded process memory for
-subsequent analysis. Restarting the server expires scenario IDs.
+Backend переводит выбранные ID в формат engine. Стоимость и Score клиентом не принимаются. Невалидный набор возвращает HTTP 422 без числового результата.
 
 ### `POST /ai/analyze`
 
-Request (browser sends identifiers only):
-
-```json
-{"scenarioId": "<opaque-id>", "datasetVersion": "sim-<catalog-hash>"}
-```
-
-Optional `mode` may be `auto`, `live`, `mock`, or `template`.
-`auto` uses live AI when an API key is configured and otherwise supplies a
-rule-based explanation. The server looks up and recomputes the stored decisions
-before analysis.
-
-Response:
+Выполняет: scenario → `simulation.simulate_scenario` → Policy + Risk + Optimizer → Executive. Ответ содержит исходный полный результат движка и четыре структурированных объекта анализа:
 
 ```json
 {
-  "scenarioId": "<opaque-id>",
-  "summary": "…",
-  "strengths": ["…"],
-  "risks": ["…"],
-  "recommendations": ["…"],
-  "source": "template_fallback"
+  "datasetVersion": "sim-...",
+  "simulation": {"valid": true, "score": 56.5, "total_cost": 95},
+  "analysis": {
+    "policy": {"summary": "...", "strengths": [], "tradeoffs": [], "district_observations": []},
+    "risk": {"risk_level": "medium", "risks": [], "critical_findings": [], "warnings": []},
+    "optimizer": {"current_score": 56.5, "recommended_score": 60.2, "improvement": 3.7, "recommended_scenario": [], "reasoning": "..."},
+    "executive": {"executive_summary": "...", "top_strengths": [], "main_risks": [], "recommended_actions": [], "final_comment": "..."}
+  },
+  "optimizedScenarios": [],
+  "aiStatus": {"status": "available", "source": "openai"}
 }
 ```
 
-`source` identifies `live`, `mock`, `template`, or
-`template_fallback`. The summary is prefixed with the source label so the
-current frontend, which strips unknown fields, still displays the analysis mode.
+Числа выше иллюстративны. Без `OPENAI_API_KEY` сервер возвращает `analysis: null`, но сохраняет расчет engine и `aiStatus.status=configuration_error` с сообщением и именем требуемой переменной. При отказе AI детерминированные результаты также сохраняются.
 
 ### `POST /ai/optimize`
 
-Request:
+Тело — сценарный запрос плюс необязательный `topN` (целое число 1–10, default 5). Кандидатов вычисляет только `simulation.find_best_scenarios()`; сравнение — только `simulation.compare_scenarios()`.
 
-```json
-{"datasetVersion": "sim-<catalog-hash>", "topN": 3}
-```
+Ответ содержит `simulation` текущего сценария, engine-ranked `scenarios` и `recommended` с текущим Score, рекомендуемым Score, улучшением от engine, выбранными решениями и AI-пояснением. При отсутствии ключа `reasoning=null`, `aiStatus` сообщает настройку; engine-результаты остаются доступны.
 
-`topN` is optional (default 5, range 1–10). The route delegates the search
-to `simulation.find_best_scenarios()` and returns its engine-computed ranking:
-
-```json
-{"datasetVersion": "sim-<catalog-hash>", "scenarios": [{"score": 56.5, "total_cost": 95}]}
-```
-
-The example is abbreviated. This endpoint does not recalculate or alter the
-engine's candidate scores.
-
-### `GET /docs`
-
-FastAPI-generated OpenAPI page for request and response schemas.
+Секреты помещаются только в локальный `.env`, который не коммитится. Скопируйте `.env.example` и задайте `OPENAI_API_KEY`. Таймаут AI по умолчанию 15 секунд.
